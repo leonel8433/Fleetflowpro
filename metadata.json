@@ -1,0 +1,7 @@
+{
+  "name": "FleetFlow Pro",
+  "description": "A comprehensive fleet management system featuring driver/vehicle registration, intelligent check-out checklists, route tracking with Google Maps integration, and a global analytics dashboard.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
