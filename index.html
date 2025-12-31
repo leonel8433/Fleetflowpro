@@ -11,6 +11,34 @@
     <style>
       body { font-family: 'Inter', sans-serif; }
       .font-write { font-weight: 900; }
+      
+      /* Estilos globais para todos os campos de entrada de dados */
+      input, select, textarea {
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 900 !important; /* Estilo 'write' */
+        color: #0f172a !important;   /* Cor Slate-900 (Escrita escura e sólida) */
+      }
+      
+      /* Mantendo o placeholder legível mas menos pesado que o texto digitado para contraste */
+      input::placeholder, textarea::placeholder {
+        font-weight: 500 !important;
+        color: #94a3b8 !important; 
+      }
+
+      /* Melhoria estética geral para scrollbars internas */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #e2e8f0;
+        border-radius: 10px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #cbd5e1;
+      }
     </style>
   <script type="importmap">
 {

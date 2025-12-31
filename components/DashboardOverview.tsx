@@ -10,7 +10,7 @@ interface DashboardOverviewProps {
 }
 
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule }) => {
-  const { vehicles, drivers, activeTrips, scheduledTrips, notifications, checklists, occurrences, maintenanceRecords, currentUser, updateTrip, endTrip, resolveMaintenance } = useFleet();
+  const { vehicles, drivers, activeTrips, scheduledTrips, notifications, checklists, occurrences, maintenanceRecords, currentUser, updateTrip, endTrip, cancelTrip, resolveMaintenance } = useFleet();
   const [aiInsights, setAiInsights] = useState<string>("Analisando dados da frota...");
   
   const isAdmin = currentUser?.username === 'admin';
@@ -24,8 +24,23 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule }
 
   const [resolvingMaint, setResolvingMaint] = useState<{recordId: string, vehicleId: string, plate: string} | null>(null);
   const [resKm, setResKm] = useState<number>(0);
+  
+  // Finish Trip States
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [endKm, setEndKm] = useState<number>(0);
+  const [fuelExpense, setFuelExpense] = useState<string>('0');
+  const [otherExpense, setOtherExpense] = useState<string>('0');
+  const [expenseNotes, setExpenseNotes] = useState<string>('');
+
+  // Edit Trip States
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    destination: '',
+    waypoints: [] as string[]
+  });
+
+  // Cancel Trip States
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const vehiclesInMaintenance = useMemo(() => {
     return vehicles.filter(v => v.status === VehicleStatus.MAINTENANCE).map(v => {
@@ -50,6 +65,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule }
 
   const handleResolveMaintQuick = () => {
     if (resolvingMaint) {
+      // No dashboard rápido, mantemos sem alteração de custo ou passamos undefined
       resolveMaintenance(resolvingMaint.vehicleId, resolvingMaint.recordId, resKm, new Date().toISOString());
       setResolvingMaint(null);
       alert(`Veículo ${resolvingMaint.plate} liberado para uso!`);
@@ -60,16 +76,94 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule }
     if (myActiveTrip) {
       const vehicle = vehicles.find(v => v.id === myActiveTrip.vehicleId);
       setEndKm(vehicle?.currentKm || 0);
+      setFuelExpense('0');
+      setOtherExpense('0');
+      setExpenseNotes('');
       setShowFinishModal(true);
     }
+  };
+
+  const handleStartGPS = () => {
+    if (!myActiveTrip) return;
+    const origin = encodeURIComponent(myActiveTrip.origin);
+    const dest = encodeURIComponent(`${myActiveTrip.destination}${myActiveTrip.city ? ', ' + myActiveTrip.city : ''}`);
+    const wps = myActiveTrip.waypoints && myActiveTrip.waypoints.length > 0 
+      ? `&waypoints=${myActiveTrip.waypoints.map(w => encodeURIComponent(w)).join('|')}` 
+      : '';
+    
+    // Abre no Google Maps App (se houver) ou no browser com modo navegação
+    window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${wps}&travelmode=driving`, '_blank');
   };
 
   const confirmFinish = () => {
     if (myActiveTrip) {
       const deviceTime = new Date().toISOString();
-      endTrip(myActiveTrip.id, endKm, deviceTime);
+      endTrip(myActiveTrip.id, endKm, deviceTime, {
+        fuel: parseFloat(fuelExpense) || 0,
+        other: parseFloat(otherExpense) || 0,
+        notes: expenseNotes
+      });
       setShowFinishModal(false);
       alert('Viagem encerrada! Obrigado pela jornada.');
+    }
+  };
+
+  // Edit Trip Functions
+  const openEditModal = () => {
+    if (myActiveTrip) {
+      setEditForm({
+        destination: myActiveTrip.destination,
+        waypoints: myActiveTrip.waypoints || []
+      });
+      setShowEditModal(true);
+    }
+  };
+
+  const handleAddWaypoint = () => {
+    setEditForm(prev => ({ ...prev, waypoints: [...prev.waypoints, ''] }));
+  };
+
+  const handleUpdateWaypoint = (idx: number, val: string) => {
+    const newWps = [...editForm.waypoints];
+    newWps[idx] = val;
+    setEditForm(prev => ({ ...prev, waypoints: newWps }));
+  };
+
+  const handleRemoveWaypoint = (idx: number) => {
+    setEditForm(prev => ({ ...prev, waypoints: prev.waypoints.filter((_, i) => i !== idx) }));
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (myActiveTrip) {
+      updateTrip(myActiveTrip.id, {
+        destination: editForm.destination,
+        waypoints: editForm.waypoints.filter(w => w.trim() !== '')
+      });
+      setShowEditModal(false);
+      alert('Rota atualizada com sucesso!');
+    }
+  };
+
+  // Cancel Trip Functions
+  const handleCancelTrip = () => {
+    if (myActiveTrip) {
+      cancelTrip(myActiveTrip.id);
+      setShowCancelConfirm(false);
+      alert('Viagem cancelada. O veículo está disponível novamente.');
+    }
+  };
+
+  const getStatusConfig = (status: VehicleStatus) => {
+    switch (status) {
+      case VehicleStatus.AVAILABLE:
+        return { icon: 'fa-check-circle', color: 'text-emerald-500', bg: 'bg-emerald-50', label: 'Disponível' };
+      case VehicleStatus.IN_USE:
+        return { icon: 'fa-truck-moving', color: 'text-blue-500', bg: 'bg-blue-50', label: 'Em Uso' };
+      case VehicleStatus.MAINTENANCE:
+        return { icon: 'fa-wrench', color: 'text-red-500', bg: 'bg-red-50', label: 'Manutenção' };
+      default:
+        return { icon: 'fa-question-circle', color: 'text-slate-400', bg: 'bg-slate-50', label: 'Desconhecido' };
     }
   };
 
@@ -146,15 +240,133 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule }
                   <span className="text-sm font-bold">{myActiveTrip.plannedArrival ? new Date(myActiveTrip.plannedArrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}</span>
                 </div>
               </div>
+
+              {/* Waypoints badge display */}
+              {myActiveTrip.waypoints && myActiveTrip.waypoints.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <span className="text-[9px] text-blue-400 uppercase font-write flex items-center gap-1">
+                    <i className="fas fa-map-signs"></i> {myActiveTrip.waypoints.length} Paradas planejadas
+                  </span>
+                </div>
+              )}
             </div>
 
-            <div className="w-full md:w-64 flex flex-col gap-3 justify-center">
+            <div className="w-full md:w-80 flex flex-col gap-3 justify-center">
+              <button 
+                onClick={handleStartGPS}
+                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 rounded-2xl font-write text-xs uppercase tracking-widest transition-all shadow-xl shadow-indigo-900/40 flex items-center justify-center gap-3 border-2 border-indigo-400/30"
+              >
+                <i className="fas fa-compass text-xl animate-pulse"></i> Iniciar Navegação GPS
+              </button>
+
               <button 
                 onClick={handleFinalArrival}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-write text-xs uppercase tracking-widest transition-all shadow-xl shadow-emerald-900/40"
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-write text-xs uppercase tracking-widest transition-all shadow-lg shadow-emerald-900/40"
               >
                 <i className="fas fa-check-circle mr-2"></i> Cheguei ao Local
               </button>
+              
+              <div className="flex gap-2">
+                <button 
+                  onClick={openEditModal}
+                  className="flex-1 py-3 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl font-write text-[10px] uppercase tracking-widest transition-all"
+                >
+                  <i className="fas fa-route mr-1.5"></i> Alterar Rota
+                </button>
+                <button 
+                  onClick={() => setShowCancelConfirm(true)}
+                  className="flex-1 py-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl font-write text-[10px] uppercase tracking-widest transition-all"
+                >
+                  <i className="fas fa-ban mr-1.5"></i> Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Rota (Condutor) */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in duration-300">
+            <div className="p-6 bg-slate-800 text-white flex justify-between items-center">
+              <h3 className="text-lg font-write uppercase">Atualizar Rota</h3>
+              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-white"><i className="fas fa-times"></i></button>
+            </div>
+            <form onSubmit={handleSaveEdit} className="p-8 space-y-6">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-2 tracking-widest">Novo Destino Final</label>
+                <input 
+                  required
+                  value={editForm.destination}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, destination: e.target.value }))}
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Gerenciar Paradas</label>
+                  <button type="button" onClick={handleAddWaypoint} className="text-[10px] font-write text-blue-600 uppercase tracking-widest flex items-center gap-1">
+                    <i className="fas fa-plus"></i> Adicionar
+                  </button>
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                  {editForm.waypoints.map((wp, i) => (
+                    <div key={i} className="flex gap-2">
+                      <div className="w-8 h-11 bg-slate-100 rounded-xl flex items-center justify-center text-[10px] font-bold text-slate-400">{i+1}</div>
+                      <input 
+                        value={wp}
+                        onChange={(e) => handleUpdateWaypoint(i, e.target.value)}
+                        className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold"
+                        placeholder={`Endereço da parada ${i+1}`}
+                      />
+                      <button type="button" onClick={() => handleRemoveWaypoint(i)} className="text-red-300 hover:text-red-500 transition-colors">
+                        <i className="fas fa-trash-alt"></i>
+                      </button>
+                    </div>
+                  ))}
+                  {editForm.waypoints.length === 0 && (
+                    <p className="text-[10px] text-slate-300 italic text-center py-4">Nenhuma parada intermediária adicionada</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-slate-50">
+                <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 py-4 text-slate-400 font-write uppercase text-[10px]">Descartar</button>
+                <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-write uppercase text-xs shadow-xl shadow-blue-100">Salvar Mudanças</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmação Cancelamento */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-8 text-center space-y-4">
+              <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto text-3xl">
+                <i className="fas fa-exclamation-triangle"></i>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">Cancelar Viagem?</h3>
+                <p className="text-sm text-slate-500 mt-2">Esta ação interromperá o monitoramento e liberará o veículo imediatamente. Confirmar?</p>
+              </div>
+              <div className="flex flex-col gap-2 pt-4">
+                <button 
+                  onClick={handleCancelTrip}
+                  className="w-full py-4 bg-red-600 text-white rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl shadow-red-100"
+                >
+                  Confirmar Cancelamento
+                </button>
+                <button 
+                  onClick={() => setShowCancelConfirm(false)}
+                  className="w-full py-3 text-slate-400 font-write uppercase text-[10px] tracking-widest"
+                >
+                  Voltar para Viagem
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -227,21 +439,59 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule }
             <div className="p-6 bg-emerald-600 text-white">
               <h3 className="text-lg font-write uppercase">Finalizar Percurso</h3>
             </div>
-            <div className="p-8 space-y-6">
+            <div className="p-8 space-y-5">
               <div>
-                <label className="block text-xs font-write text-slate-400 uppercase mb-3 tracking-widest">Hodômetro Final (KM)</label>
+                <label className="block text-xs font-write text-slate-400 uppercase mb-2 tracking-widest">Hodômetro Final (KM)</label>
                 <input 
                   type="number"
                   value={endKm}
                   onChange={(e) => setEndKm(parseInt(e.target.value))}
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none font-write text-2xl text-slate-800 text-center"
+                  className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none font-write text-2xl text-slate-800 text-center"
                   placeholder="0"
-                  autoFocus
                 />
               </div>
-              <div className="flex gap-3">
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-write text-slate-400 uppercase mb-2 tracking-widest">Despesa Combustível (R$)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">R$</span>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      value={fuelExpense}
+                      onChange={(e) => setFuelExpense(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-write text-slate-400 uppercase mb-2 tracking-widest">Outras Despesas (R$)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">R$</span>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      value={otherExpense}
+                      onChange={(e) => setOtherExpense(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-2 tracking-widest">Observações das Despesas</label>
+                <textarea 
+                  value={expenseNotes}
+                  onChange={(e) => setExpenseNotes(e.target.value)}
+                  placeholder="Ex: Pedágio, Alimentação, Estacionamento..."
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-medium min-h-[80px]"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowFinishModal(false)} className="flex-1 py-4 text-slate-400 font-write uppercase text-[10px]">Cancelar</button>
-                {/* Fixed: Removed non-existent 'confirmFinish' prop from button element */}
                 <button onClick={confirmFinish} className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-write uppercase text-xs shadow-xl shadow-emerald-100">Confirmar Chegada</button>
               </div>
             </div>
@@ -249,6 +499,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule }
         </div>
       )}
 
+      {/* Estatísticas Rápidas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
            <p className="text-[10px] font-write text-slate-400 uppercase mb-2 tracking-widest">Veículos Livres</p>
@@ -270,6 +521,33 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule }
              <span className="text-3xl font-write text-slate-800">{fleetStats.maintenance}</span>
              <i className="fas fa-wrench text-red-500 text-2xl opacity-20"></i>
            </div>
+        </div>
+      </div>
+
+      {/* Status da Frota em Tempo Real */}
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-sm font-write text-slate-800 uppercase tracking-widest flex items-center gap-2">
+            <i className="fas fa-satellite text-blue-500"></i> Status da Frota em Tempo Real
+          </h3>
+          <span className="text-[10px] font-bold text-slate-300 uppercase">Total: {vehicles.length} Veículos</span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+          {vehicles.map(v => {
+            const config = getStatusConfig(v.status);
+            return (
+              <div key={v.id} className={`${config.bg} p-4 rounded-2xl border border-white shadow-sm flex flex-col items-center text-center transition-all hover:scale-105 group`}>
+                <div className={`${config.color} text-xl mb-2 transition-transform group-hover:rotate-12`}>
+                  <i className={`fas ${config.icon}`}></i>
+                </div>
+                <p className="text-xs font-write text-slate-800 uppercase tracking-tighter truncate w-full">{v.plate}</p>
+                <p className="text-[9px] font-bold text-slate-400 uppercase truncate w-full mb-1">{v.model}</p>
+                <span className={`${config.color} text-[8px] font-write uppercase tracking-widest`}>
+                  {config.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
 

@@ -11,6 +11,7 @@ import SchedulingPage from './pages/SchedulingPage';
 import ReportsPage from './pages/ReportsPage';
 import HistoryPage from './pages/HistoryPage';
 import Login from './pages/Login';
+import ForceChangePassword from './pages/ForceChangePassword';
 
 const AppContent: React.FC = () => {
   const { currentUser } = useFleet();
@@ -28,6 +29,11 @@ const AppContent: React.FC = () => {
 
   if (!currentUser) {
     return <Login />;
+  }
+
+  // Se for o primeiro acesso (senha não alterada), força a troca
+  if (currentUser && !currentUser.passwordChanged) {
+    return <ForceChangePassword />;
   }
 
   const handleStartFromSchedule = (scheduleId: string) => {

@@ -22,7 +22,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
     { id: 'fleet', icon: 'fa-truck', label: 'Frota', adminOnly: true },
     { id: 'drivers', icon: 'fa-users', label: 'Motoristas', adminOnly: true },
     { id: 'scheduling', icon: 'fa-calendar-alt', label: 'Agenda', adminOnly: false },
-    { id: 'operation', icon: 'fa-key', label: 'Operação (Saída)', adminOnly: false },
+    { id: 'operation', icon: 'fa-key', label: 'Operação', adminOnly: false },
     { id: 'history', icon: 'fa-clock-rotate-left', label: 'Histórico', adminOnly: false },
     { id: 'monitoring', icon: 'fa-map-location-dot', label: 'Monitoramento', adminOnly: true },
     { id: 'reports', icon: 'fa-file-contract', label: 'Relatórios', adminOnly: false },
@@ -45,14 +45,14 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
   }, []);
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-inter">
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-inter text-slate-900">
       {/* Sidebar Desktop */}
       <aside className="w-64 bg-white border-r border-slate-100 flex flex-col hidden md:flex shadow-sm z-20">
         <div className="p-8 flex justify-center">
           <Logo size="sm" />
         </div>
         
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
           <div className="px-4 mb-4 flex items-center justify-between">
              <span className="text-[10px] font-write text-slate-300 uppercase tracking-[0.2em]">Menu Principal</span>
              {isAdmin && <span className="text-[8px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-write uppercase">Admin</span>}
@@ -131,7 +131,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
                   <div className="p-5 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
                     <h3 className="font-write text-slate-800 text-[10px] uppercase tracking-[0.2em]">Notificações</h3>
                   </div>
-                  <div className="max-h-[400px] overflow-y-auto">
+                  <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
                     {notifications.length > 0 ? (
                       notifications.map(n => (
                         <div key={n.id} onClick={() => markNotificationAsRead(n.id)} className={`p-5 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex gap-4 ${!n.isRead ? 'bg-blue-50/20' : ''}`}>
@@ -163,22 +163,24 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 md:p-10">
+        <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
           {children}
         </div>
 
-        {/* Bottom Nav Mobile */}
-        <nav className="md:hidden bg-white/95 backdrop-blur-md border-t border-slate-100 flex items-center justify-around p-2 z-20 pb-safe">
-          {visibleMenuItems.slice(0, 5).map(item => (
-            <button 
-              key={item.id} 
-              onClick={() => onTabChange(item.id)} 
-              className={`flex flex-col items-center p-2 rounded-2xl transition-all flex-1 ${activeTab === item.id ? 'text-blue-600 bg-blue-50/50 font-write' : 'text-slate-300'}`}
-            >
-              <i className={`fas ${item.icon} text-lg`}></i>
-              <span className="text-[8px] font-bold mt-1 uppercase truncate w-full text-center">{item.label.split(' ')[0]}</span>
-            </button>
-          ))}
+        {/* Bottom Nav Mobile - Corrigido para mostrar todos os itens com suporte a scroll horizontal */}
+        <nav className="md:hidden bg-white/95 backdrop-blur-md border-t border-slate-100 flex items-center overflow-x-auto p-2 z-20 pb-safe custom-scrollbar">
+          <div className="flex items-center gap-1 min-w-full">
+            {visibleMenuItems.map(item => (
+              <button 
+                key={item.id} 
+                onClick={() => onTabChange(item.id)} 
+                className={`flex flex-col items-center p-2 px-4 rounded-2xl transition-all flex-shrink-0 ${activeTab === item.id ? 'text-blue-600 bg-blue-50/50 font-write' : 'text-slate-300'}`}
+              >
+                <i className={`fas ${item.icon} text-lg`}></i>
+                <span className="text-[8px] font-bold mt-1 uppercase truncate text-center">{item.label.split(' ')[0]}</span>
+              </button>
+            ))}
+          </div>
         </nav>
       </main>
     </div>

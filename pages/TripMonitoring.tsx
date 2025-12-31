@@ -8,6 +8,9 @@ const TripMonitoring: React.FC = () => {
   const { activeTrips, vehicles, drivers, occurrences, updateTrip, endTrip, cancelTrip, addOccurrence } = useFleet();
   const [finishingTripId, setFinishingTripId] = useState<string | null>(null);
   const [endKm, setEndKm] = useState<number>(0);
+  const [fuelExpense, setFuelExpense] = useState<string>('0');
+  const [otherExpense, setOtherExpense] = useState<string>('0');
+  const [expenseNotes, setExpenseNotes] = useState<string>('');
   const [now, setNow] = useState(new Date());
 
   // Route Editing State
@@ -81,12 +84,19 @@ const TripMonitoring: React.FC = () => {
     const vehicle = vehicles.find(v => v.id === trip.vehicleId);
     setFinishingTripId(trip.id);
     setEndKm(vehicle?.currentKm || 0);
+    setFuelExpense('0');
+    setOtherExpense('0');
+    setExpenseNotes('');
   };
 
   const confirmFinish = () => {
     if (finishingTripId) {
       const deviceTime = new Date().toISOString();
-      endTrip(finishingTripId, endKm, deviceTime);
+      endTrip(finishingTripId, endKm, deviceTime, {
+        fuel: parseFloat(fuelExpense) || 0,
+        other: parseFloat(otherExpense) || 0,
+        notes: expenseNotes
+      });
       setFinishingTripId(null);
       alert('Viagem encerrada com sucesso!');
     }
@@ -270,20 +280,54 @@ const TripMonitoring: React.FC = () => {
       {/* Finishing Modal */}
       {finishingTripId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="p-6 bg-slate-900 text-white">
               <h3 className="text-lg font-bold">Encerrar Viagem</h3>
             </div>
-            <div className="p-8 space-y-6">
+            <div className="p-8 space-y-5">
               <div>
                 <label className="block text-xs font-write text-slate-400 uppercase mb-3">KM Atual (Hodômetro)</label>
                 <input 
                   type="number"
                   value={endKm}
                   onChange={(e) => setEndKm(parseInt(e.target.value))}
-                  className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none font-write text-lg text-slate-800 text-center"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none font-write text-lg text-slate-800 text-center"
                 />
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Combustível (R$)</label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    value={fuelExpense}
+                    onChange={(e) => setFuelExpense(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Outras (R$)</label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    value={otherExpense}
+                    onChange={(e) => setOtherExpense(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Anotações Despesas</label>
+                <textarea 
+                  value={expenseNotes}
+                  onChange={(e) => setExpenseNotes(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none min-h-[60px]"
+                  placeholder="Descrição opcional..."
+                />
+              </div>
+
               <div className="flex gap-3 pt-4">
                 <button onClick={() => setFinishingTripId(null)} className="flex-1 py-3 text-slate-400 font-write uppercase text-[10px]">Voltar</button>
                 <button onClick={confirmFinish} className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-write uppercase text-xs">Finalizar Agora</button>

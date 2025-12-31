@@ -64,8 +64,10 @@ const ReportsPage: React.FC = () => {
     const totalDist = filteredTrips.reduce((sum, t) => sum + (t.distance || 0), 0);
     const totalMaintCost = filteredMaintenance.reduce((sum, m) => sum + m.cost, 0);
     const totalFineCost = filteredFines.reduce((sum, f) => sum + f.value, 0);
+    const totalTripFuel = filteredTrips.reduce((sum, t) => sum + (t.fuelExpense || 0), 0);
+    const totalTripOther = filteredTrips.reduce((sum, t) => sum + (t.otherExpense || 0), 0);
     
-    return { totalDist, totalMaintCost, totalFineCost };
+    return { totalDist, totalMaintCost, totalFineCost, totalTripFuel, totalTripOther };
   }, [filteredTrips, filteredMaintenance, filteredFines]);
 
   return (
@@ -103,7 +105,7 @@ const ReportsPage: React.FC = () => {
       <div className="flex overflow-x-auto gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
         {[
           { id: 'trips', label: 'Viagens', icon: 'fa-route', adminOnly: false },
-          { id: 'consumption', label: 'Consumo', icon: 'fa-gas-pump', adminOnly: true },
+          { id: 'consumption', label: 'Consumo', icon: 'fa-gas-pump', adminOnly: false },
           { id: 'fines', label: 'Multas', icon: 'fa-gavel', adminOnly: false },
           { id: 'management', label: 'Gerencial', icon: 'fa-briefcase', adminOnly: true },
         ].filter(t => !t.adminOnly || isAdmin).map(tab => (
@@ -163,25 +165,52 @@ const ReportsPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {activeReport === 'consumption' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Gasto em Combustível</p>
+               <p className="text-3xl font-write text-emerald-600">R$ {managementSummary.totalTripFuel.toLocaleString()}</p>
+            </div>
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Outras Despesas de Viagem</p>
+               <p className="text-3xl font-write text-blue-600">R$ {managementSummary.totalTripOther.toLocaleString()}</p>
+            </div>
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Custo Total de Operação</p>
+               <p className="text-3xl font-write text-slate-800">R$ {(managementSummary.totalTripFuel + managementSummary.totalTripOther).toLocaleString()}</p>
+            </div>
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Custo Médio por KM</p>
+               <p className="text-3xl font-write text-indigo-600">
+                 R$ {managementSummary.totalDist > 0 ? ((managementSummary.totalTripFuel + managementSummary.totalTripOther) / managementSummary.totalDist).toFixed(2) : '0.00'}
+               </p>
+            </div>
+          </div>
+        )}
         
         {activeReport === 'fines' && (
           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden p-8 text-center">
              <i className="fas fa-gavel text-4xl text-slate-200 mb-4"></i>
              <h3 className="text-sm font-write text-slate-800 uppercase tracking-widest mb-2">Multas e Infrações</h3>
              <p className="text-4xl font-write text-red-600 mb-2">{filteredFines.length}</p>
-             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Multas acumuladas no período selecionado</p>
+             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Multas acumuladas no período selecionado (R$ {managementSummary.totalFineCost.toLocaleString()})</p>
           </div>
         )}
 
         {activeReport === 'management' && isAdmin && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Custos de Manutenção</p>
+               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Manutenção Preventiva/Corretiva</p>
                <p className="text-3xl font-write text-slate-800">R$ {managementSummary.totalMaintCost.toLocaleString()}</p>
             </div>
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Total de Infrações</p>
-               <p className="text-3xl font-write text-red-600">R$ {managementSummary.totalFineCost.toLocaleString()}</p>
+               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Despesas Operacionais (Viagens)</p>
+               <p className="text-3xl font-write text-emerald-600">R$ {(managementSummary.totalTripFuel + managementSummary.totalTripOther).toLocaleString()}</p>
+            </div>
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Total Geral de Despesas</p>
+               <p className="text-3xl font-write text-red-600">R$ {(managementSummary.totalMaintCost + managementSummary.totalFineCost + managementSummary.totalTripFuel + managementSummary.totalTripOther).toLocaleString()}</p>
             </div>
           </div>
         )}

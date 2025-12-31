@@ -23,10 +23,10 @@ interface FleetContextType {
   addScheduledTrip: (trip: ScheduledTrip) => void;
   updateScheduledTrip: (id: string, updates: Partial<ScheduledTrip>) => void;
   deleteScheduledTrip: (id: string) => void;
-  endTrip: (tripId: string, currentKm: number, endTime: string) => void;
+  endTrip: (tripId: string, currentKm: number, endTime: string, expenses?: { fuel: number, other: number, notes: string }) => void;
   cancelTrip: (tripId: string) => void;
   addMaintenanceRecord: (record: MaintenanceRecord) => void;
-  resolveMaintenance: (vehicleId: string, recordId: string | null | undefined, currentKm: number, returnDate: string) => void;
+  resolveMaintenance: (vehicleId: string, recordId: string | null | undefined, currentKm: number, returnDate: string, finalCost?: number) => void;
   addFine: (fine: Fine) => void;
   deleteFine: (id: string) => void;
   addOccurrence: (occ: Occurrence) => void;
@@ -34,6 +34,7 @@ interface FleetContextType {
   currentUser: Driver | null;
   login: (username: string, pass: string) => boolean;
   logout: () => void;
+  changePassword: (newPass: string) => void;
 }
 
 const FleetContext = createContext<FleetContextType | undefined>(undefined);
@@ -51,9 +52,9 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [drivers, setDrivers] = useState<Driver[]>(() => {
     const saved = localStorage.getItem('fleet_drivers');
     return saved ? JSON.parse(saved) : [
-      { id: 'd1', name: 'João Silva', license: '12345678', username: 'joao', password: '123' },
-      { id: 'd2', name: 'Maria Santos', license: '87654321', username: 'maria', password: '123' },
-      { id: 'admin', name: 'Gestor de Frota', license: '0000', username: 'admin', password: 'admin' },
+      { id: 'd1', name: 'João Silva', license: '12345678', username: 'joao', password: '123', passwordChanged: false },
+      { id: 'd2', name: 'Maria Santos', license: '87654321', username: 'maria', password: '123', passwordChanged: false },
+      { id: 'admin', name: 'Gestor de Frota', license: '0000', username: 'admin', password: 'admin', passwordChanged: true },
     ];
   });
 
@@ -96,7 +97,10 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [currentUser, setCurrentUser] = useState<Driver | null>(null);
+  const [currentUser, setCurrentUser] = useState<Driver | null>(() => {
+    const saved = sessionStorage.getItem('fleet_current_user');
+    return saved ? JSON.parse(saved) : null;
+  });
 
   useEffect(() => {
     localStorage.setItem('fleet_vehicles', JSON.stringify(vehicles));
@@ -121,6 +125,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const driver = drivers.find(d => d.username === user && d.password === pass);
     if (driver) {
       setCurrentUser(driver);
+      sessionStorage.setItem('fleet_current_user', JSON.stringify(driver));
       return true;
     }
     return false;
@@ -128,7 +133,16 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const logout = useCallback(() => {
     setCurrentUser(null);
+    sessionStorage.removeItem('fleet_current_user');
   }, []);
+
+  const changePassword = (newPass: string) => {
+    if (!currentUser) return;
+    const updatedUser = { ...currentUser, password: newPass, passwordChanged: true };
+    setCurrentUser(updatedUser);
+    sessionStorage.setItem('fleet_current_user', JSON.stringify(updatedUser));
+    setDrivers(prev => prev.map(d => d.id === currentUser.id ? updatedUser : d));
+  };
 
   const addVehicle = (v: Vehicle) => setVehicles(prev => [...prev, v]);
   
@@ -147,12 +161,19 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ));
   };
 
-  const endTrip = (tripId: string, currentKm: number, endTime: string) => {
+  const endTrip = (tripId: string, currentKm: number, endTime: string, expenses?: { fuel: number, other: number, notes: string }) => {
     const trip = activeTrips.find(t => t.id === tripId);
     if (!trip) return;
     
     const distance = currentKm - trip.startKm;
-    const finishedTrip = { ...trip, endTime, distance }; 
+    const finishedTrip: Trip = { 
+      ...trip, 
+      endTime, 
+      distance,
+      fuelExpense: expenses?.fuel || 0,
+      otherExpense: expenses?.other || 0,
+      expenseNotes: expenses?.notes || ''
+    }; 
     
     setActiveTrips(prev => prev.filter(t => t.id !== tripId));
     setCompletedTrips(prev => [finishedTrip, ...prev]);
@@ -175,7 +196,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ));
   };
 
-  const resolveMaintenance = useCallback((vehicleId: string, recordId: string | null | undefined, currentKm: number, returnDate: string) => {
+  const resolveMaintenance = useCallback((vehicleId: string, recordId: string | null | undefined, currentKm: number, returnDate: string, finalCost?: number) => {
     setVehicles(prev => prev.map(v => 
       v.id === vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm } : v
     ));
@@ -187,13 +208,22 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         targetId = openRecord?.id;
       }
       if (targetId) {
-        return prev.map(m => m.id === targetId ? { ...m, returnDate } : m);
+        return prev.map(m => {
+          if (m.id === targetId) {
+            const updated: MaintenanceRecord = { ...m, returnDate };
+            if (finalCost !== undefined && !isNaN(finalCost)) {
+              updated.cost = finalCost;
+            }
+            return updated;
+          }
+          return m;
+        });
       }
       return prev;
     });
   }, []);
 
-  const addDriver = (d: Driver) => setDrivers(prev => [...prev, d]);
+  const addDriver = (d: Driver) => setDrivers(prev => [...prev, { ...d, passwordChanged: d.passwordChanged ?? false }]);
   const updateDriver = (id: string, updates: Partial<Driver>) => setDrivers(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
   const deleteDriver = (id: string) => setDrivers(prev => prev.filter(d => d.id !== id));
   const updateTrip = (tripId: string, updates: Partial<Trip>) => setActiveTrips(prev => prev.map(t => t.id === tripId ? { ...t, ...updates } : t));
@@ -209,7 +239,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <FleetContext.Provider value={{
       vehicles, drivers, activeTrips, completedTrips, scheduledTrips, checklists, maintenanceRecords, notifications, fines, occurrences,
       addVehicle, updateVehicle, addDriver, updateDriver, deleteDriver, startTrip, updateTrip, addScheduledTrip, updateScheduledTrip, deleteScheduledTrip, endTrip, cancelTrip, addMaintenanceRecord, resolveMaintenance, addFine, deleteFine, addOccurrence, markNotificationAsRead,
-      currentUser, login, logout
+      currentUser, login, logout, changePassword
     }}>
       {children}
     </FleetContext.Provider>

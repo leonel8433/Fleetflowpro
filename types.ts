@@ -63,6 +63,7 @@ export interface Driver {
   license: string;
   username: string;
   password?: string;
+  passwordChanged?: boolean; // Indica se o usuário já alterou a senha padrão
   activeVehicleId?: string;
   avatar?: string;
 }
@@ -97,6 +98,9 @@ export interface Trip {
   startKm: number; // KM no momento da saída
   distance?: number; // Calculado no final
   observations?: string;
+  fuelExpense?: number;
+  otherExpense?: number;
+  expenseNotes?: string;
 }
 
 export interface ScheduledTrip extends Omit<Trip, 'startTime' | 'startKm'> {

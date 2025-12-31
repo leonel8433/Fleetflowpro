@@ -14,6 +14,7 @@ const FleetManager: React.FC = () => {
   // Modal para finalizar manutenção
   const [resolvingMaintenance, setResolvingMaintenance] = useState<{recordId: string, vehicleId: string} | null>(null);
   const [resolveKm, setResolveKm] = useState<number>(0);
+  const [resolveCost, setResolveCost] = useState<string>('');
   const [resolveDate, setResolveDate] = useState(new Date().toISOString().slice(0, 16));
 
   const [newRecord, setNewRecord] = useState({
@@ -22,7 +23,10 @@ const FleetManager: React.FC = () => {
     serviceType: '',
     cost: '',
     km: '',
-    notes: ''
+    notes: '',
+    isTireChange: false,
+    tireBrand: '',
+    tireModel: ''
   });
 
   const [newVehicle, setNewVehicle] = useState({
@@ -37,30 +41,87 @@ const FleetManager: React.FC = () => {
 
   const handleSubmitMaintenance = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newRecord.vehicleId || !newRecord.serviceType || !newRecord.cost || !newRecord.km) return;
+    
+    // 1. Captura e validação rigorosa dos dados antes de qualquer alteração de estado
+    const selectedVehicleId = newRecord.vehicleId;
+    const finalServiceType = newRecord.isTireChange ? 'Troca de Pneus' : newRecord.serviceType.trim();
+    // O custo agora pode ser 0 se não informado
+    const costVal = newRecord.cost ? parseFloat(newRecord.cost) : 0;
+    const kmVal = parseInt(newRecord.km);
 
+    if (!selectedVehicleId) {
+      alert("Por favor, selecione um veículo.");
+      return;
+    }
+
+    if (!finalServiceType) {
+      alert("Por favor, informe o tipo de serviço.");
+      return;
+    }
+
+    if (isNaN(kmVal)) {
+      alert("KM deve ser um valor numérico válido.");
+      return;
+    }
+
+    // Preparação das notas
+    let finalNotes = newRecord.notes.trim();
+    if (newRecord.isTireChange) {
+      const tireDetails = `Pneus: ${newRecord.tireBrand || 'N/A'} ${newRecord.tireModel || 'N/A'}`;
+      finalNotes = finalNotes ? `${tireDetails} | ${finalNotes}` : tireDetails;
+    }
+
+    // Criação do objeto de registro
     const record: MaintenanceRecord = {
-      id: Math.random().toString(36).substr(2, 9),
-      vehicleId: newRecord.vehicleId,
+      id: `maint-${Math.random().toString(36).substr(2, 9)}`,
+      vehicleId: selectedVehicleId,
       date: newRecord.date,
-      serviceType: newRecord.serviceType,
-      cost: parseFloat(newRecord.cost),
-      km: parseInt(newRecord.km),
-      notes: newRecord.notes
+      serviceType: finalServiceType,
+      cost: costVal,
+      km: kmVal,
+      notes: finalNotes
     };
 
-    addMaintenanceRecord(record);
-    setNewRecord({ vehicleId: '', date: new Date().toISOString().split('T')[0], serviceType: '', cost: '', km: '', notes: '' });
-    setShowMaintenanceForm(false);
-    alert('Manutenção registrada! O veículo agora está em status de MANUTENÇÃO.');
+    try {
+      // 2. Persistência no Contexto
+      addMaintenanceRecord(record);
+      
+      // 3. Limpeza do formulário e feedback apenas após a chamada de sucesso
+      setNewRecord({ 
+        vehicleId: '', 
+        date: new Date().toISOString().split('T')[0], 
+        serviceType: '', 
+        cost: '', 
+        km: '', 
+        notes: '',
+        isTireChange: false,
+        tireBrand: '',
+        tireModel: ''
+      });
+      setShowMaintenanceForm(false);
+      alert('Manutenção registrada com sucesso! O veículo agora está em status de OFICINA.');
+    } catch (err) {
+      console.error("Erro ao registrar manutenção:", err);
+      alert("Erro ao salvar os dados. Tente novamente.");
+    }
   };
 
   const handleResolveMaintenance = (e: React.FormEvent) => {
     e.preventDefault();
     if (!resolvingMaintenance || !resolveKm) return;
     
-    resolveMaintenance(resolvingMaintenance.vehicleId, resolvingMaintenance.recordId, resolveKm, resolveDate);
+    const finalCost = resolveCost ? parseFloat(resolveCost) : undefined;
+    
+    resolveMaintenance(
+      resolvingMaintenance.vehicleId, 
+      resolvingMaintenance.recordId, 
+      resolveKm, 
+      resolveDate,
+      finalCost
+    );
+    
     setResolvingMaintenance(null);
+    setResolveCost('');
     alert('Manutenção finalizada! O veículo retornou ao status DISPONÍVEL.');
   };
 
@@ -204,31 +265,87 @@ const FleetManager: React.FC = () => {
       {showMaintenanceForm && (
         <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-300">
           <h3 className="text-sm font-write text-slate-800 uppercase tracking-widest mb-6">Registrar Saída para Manutenção</h3>
-          <form onSubmit={handleSubmitMaintenance} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div>
-              <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Veículo Destinado</label>
-              <select required value={newRecord.vehicleId} onChange={(e) => setNewRecord({ ...newRecord, vehicleId: e.target.value })} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none">
-                <option value="">Selecione o veículo...</option>
-                {vehicles.filter(v => v.status === VehicleStatus.AVAILABLE).map(v => <option key={v.id} value={v.id}>{v.plate} - {v.model}</option>)}
-              </select>
+          <form onSubmit={handleSubmitMaintenance} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Veículo Destinado</label>
+                <select 
+                  required 
+                  value={newRecord.vehicleId} 
+                  onChange={(e) => setNewRecord({ ...newRecord, vehicleId: e.target.value })} 
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="">Selecione o veículo...</option>
+                  {vehicles.filter(v => v.status === VehicleStatus.AVAILABLE).map(v => (
+                    <option key={v.id} value={v.id}>{v.plate} - {v.model}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Tipo de Serviço</label>
+                {!newRecord.isTireChange ? (
+                  <input 
+                    required={!newRecord.isTireChange}
+                    type="text" 
+                    placeholder="Ex: Troca de pastilhas de freio" 
+                    value={newRecord.serviceType} 
+                    onChange={(e) => setNewRecord({ ...newRecord, serviceType: e.target.value })} 
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" 
+                  />
+                ) : (
+                  <div className="w-full p-3 bg-slate-100 border border-slate-200 rounded-xl text-slate-400 font-bold flex items-center gap-2">
+                    <i className="fas fa-circle-check text-emerald-500"></i> Troca de Pneus
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Opções Especiais</label>
+                <button 
+                  type="button"
+                  onClick={() => setNewRecord(prev => ({ 
+                    ...prev, 
+                    isTireChange: !prev.isTireChange, 
+                    serviceType: !prev.isTireChange ? 'Troca de Pneus' : '' 
+                  }))}
+                  className={`w-full p-3 border rounded-xl font-bold text-xs uppercase transition-all flex items-center justify-center gap-2 ${newRecord.isTireChange ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400 hover:border-emerald-200'}`}
+                >
+                  <i className="fas fa-car-rear"></i> {newRecord.isTireChange ? 'Troca de Pneus Ativada' : 'É Troca de Pneus?'}
+                </button>
+              </div>
             </div>
-            <div>
-              <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Tipo de Serviço</label>
-              <input required type="text" placeholder="Ex: Troca de pastilhas de freio" value={newRecord.serviceType} onChange={(e) => setNewRecord({ ...newRecord, serviceType: e.target.value })} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
+
+            {newRecord.isTireChange && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-emerald-50 p-6 rounded-2xl border border-emerald-100 animate-in slide-in-from-left-4 duration-300">
+                <div>
+                  <label className="block text-[10px] font-write text-emerald-800 uppercase mb-2">Marca dos Pneus</label>
+                  <input required={newRecord.isTireChange} placeholder="Ex: Michelin, Pirelli..." value={newRecord.tireBrand} onChange={(e) => setNewRecord({ ...newRecord, tireBrand: e.target.value })} className="w-full p-3 bg-white border border-emerald-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-emerald-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-write text-emerald-800 uppercase mb-2">Modelo dos Pneus</label>
+                  <input required={newRecord.isTireChange} placeholder="Ex: Primacy 4, PZero..." value={newRecord.tireModel} onChange={(e) => setNewRecord({ ...newRecord, tireModel: e.target.value })} className="w-full p-3 bg-white border border-emerald-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-emerald-500 outline-none" />
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">KM de Saída</label>
+                <input required type="number" placeholder="Ex: 45000" value={newRecord.km} onChange={(e) => setNewRecord({ ...newRecord, km: e.target.value })} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Custo Estimado (Opcional)</label>
+                <input type="number" step="0.01" placeholder="0.00" value={newRecord.cost} onChange={(e) => setNewRecord({ ...newRecord, cost: e.target.value })} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Data de Saída</label>
+                <input required type="date" value={newRecord.date} onChange={(e) => setNewRecord({ ...newRecord, date: e.target.value })} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+              <div className="md:col-span-2 lg:col-span-3">
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Observações Adicionais</label>
+                <textarea value={newRecord.notes} onChange={(e) => setNewRecord({ ...newRecord, notes: e.target.value })} placeholder="Alguma observação importante sobre o serviço?" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none min-h-[100px]"></textarea>
+              </div>
+              <button type="submit" className="bg-slate-900 text-white py-4 rounded-xl font-write uppercase text-xs tracking-widest hover:bg-slate-800 transition-all lg:col-span-1 md:col-span-2">Confirmar Envio</button>
             </div>
-            <div>
-              <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">KM de Saída</label>
-              <input required type="number" placeholder="Ex: 45000" value={newRecord.km} onChange={(e) => setNewRecord({ ...newRecord, km: e.target.value })} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Custo Estimado (R$)</label>
-              <input required type="number" step="0.01" placeholder="0.00" value={newRecord.cost} onChange={(e) => setNewRecord({ ...newRecord, cost: e.target.value })} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Data de Saída</label>
-              <input required type="date" value={newRecord.date} onChange={(e) => setNewRecord({ ...newRecord, date: e.target.value })} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <button type="submit" className="bg-slate-900 text-white py-4 rounded-xl font-write uppercase text-xs tracking-widest hover:bg-slate-800 transition-all lg:col-span-1 md:col-span-2">Confirmar Envio</button>
           </form>
         </div>
       )}
@@ -252,6 +369,18 @@ const FleetManager: React.FC = () => {
                   className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-write text-xl text-slate-800 text-center"
                   placeholder="000000"
                 />
+              </div>
+              <div>
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Custo Final (R$)</label>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  value={resolveCost} 
+                  onChange={(e) => setResolveCost(e.target.value)}
+                  className="w-full p-4 bg-emerald-50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-800 text-center text-lg"
+                  placeholder="0.00"
+                />
+                <p className="text-[9px] text-slate-400 mt-1 uppercase text-center">Informe o valor total do serviço realizado</p>
               </div>
               <div>
                 <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Data/Hora do Retorno</label>
@@ -375,35 +504,41 @@ const FleetManager: React.FC = () => {
                 
                 <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                   {vehicleMaintenances.length > 0 ? (
-                    vehicleMaintenances.map(m => (
-                      <div key={m.id} className={`bg-white p-3 rounded-2xl border shadow-sm group hover:border-blue-200 transition-colors ${m.returnDate ? 'border-slate-100' : 'border-red-200 bg-red-50/20'}`}>
-                        <div className="flex justify-between items-start">
-                          <p className="text-xs font-write text-slate-900 leading-tight mb-1">{m.serviceType}</p>
-                          <span className="text-[9px] font-write text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">R$ {m.cost.toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center justify-between mt-2">
-                          <div className="flex flex-col">
-                            <p className="text-[10px] text-slate-400 font-bold">Saída: {new Date(m.date).toLocaleDateString('pt-BR')} | {m.km} KM</p>
-                            {m.returnDate && (
-                              <p className="text-[9px] text-emerald-600 font-write uppercase mt-0.5">Retorno: {new Date(m.returnDate).toLocaleDateString('pt-BR')}</p>
+                    vehicleMaintenances.map(m => {
+                      const isTireService = m.serviceType === 'Troca de Pneus' || m.notes.toLowerCase().includes('pneus:');
+                      return (
+                        <div key={m.id} className={`bg-white p-3 rounded-2xl border shadow-sm group hover:border-blue-200 transition-colors ${m.returnDate ? 'border-slate-100' : 'border-red-200 bg-red-50/20'} ${isTireService ? 'border-emerald-100 ring-1 ring-emerald-50' : ''}`}>
+                          <div className="flex justify-between items-start">
+                            <p className="text-xs font-write text-slate-900 leading-tight mb-1 flex items-center gap-2">
+                              {isTireService && <i className="fas fa-car-rear text-emerald-500 text-[10px]"></i>}
+                              {m.serviceType}
+                            </p>
+                            <span className="text-[9px] font-write text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">R$ {m.cost.toFixed(2)}</span>
+                          </div>
+                          <div className="flex items-center justify-between mt-2">
+                            <div className="flex flex-col">
+                              <p className="text-[10px] text-slate-400 font-bold">Saída: {new Date(m.date).toLocaleDateString('pt-BR')} | {m.km} KM</p>
+                              {m.returnDate && (
+                                <p className="text-[9px] text-emerald-600 font-write uppercase mt-0.5">Retorno: {new Date(m.returnDate).toLocaleDateString('pt-BR')}</p>
+                              )}
+                            </div>
+                            
+                            {m.notes && (
+                              <div className="relative group/note">
+                                <i className="fas fa-comment-dots text-slate-300 cursor-help hover:text-blue-500 transition-colors"></i>
+                                <div className="absolute bottom-full right-0 mb-2 w-48 p-3 bg-slate-800 text-white text-[10px] rounded-2xl opacity-0 invisible group-hover/note:opacity-100 group-hover/note:visible transition-all z-50 pointer-events-none shadow-2xl border border-slate-700 translate-y-2 group-hover/note:translate-y-0">
+                                  <div className="font-write uppercase text-[8px] text-blue-400 mb-1.5 border-b border-slate-700 pb-1 flex items-center gap-1">
+                                    <i className="fas fa-info-circle"></i> {isTireService ? 'Detalhes dos Pneus' : 'Observações'}
+                                  </div>
+                                  <p className="leading-relaxed text-slate-200 font-medium">{m.notes}</p>
+                                  <div className="absolute top-full right-3 -mt-1 border-4 border-transparent border-t-slate-800"></div>
+                                </div>
+                              </div>
                             )}
                           </div>
-                          
-                          {m.notes && (
-                            <div className="relative group/note">
-                              <i className="fas fa-comment-dots text-slate-300 cursor-help hover:text-blue-500 transition-colors"></i>
-                              <div className="absolute bottom-full right-0 mb-2 w-48 p-3 bg-slate-800 text-white text-[10px] rounded-2xl opacity-0 invisible group-hover/note:opacity-100 group-hover/note:visible transition-all z-50 pointer-events-none shadow-2xl border border-slate-700 translate-y-2 group-hover/note:translate-y-0">
-                                <div className="font-write uppercase text-[8px] text-blue-400 mb-1.5 border-b border-slate-700 pb-1 flex items-center gap-1">
-                                  <i className="fas fa-info-circle"></i> Observações
-                                </div>
-                                <p className="leading-relaxed text-slate-200 font-medium">{m.notes}</p>
-                                <div className="absolute top-full right-3 -mt-1 border-4 border-transparent border-t-slate-800"></div>
-                              </div>
-                            </div>
-                          )}
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="py-8 text-center border-2 border-dashed border-slate-200 rounded-3xl">
                       <p className="text-[10px] font-write text-slate-300 uppercase italic">Sem manutenções registradas</p>

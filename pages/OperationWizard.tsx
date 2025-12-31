@@ -81,6 +81,20 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
     !isKmInvalid &&
     (checklist.km ?? 0) > 0;
 
+  const handlePreviewMap = () => {
+    if (!route.origin || !route.destination) {
+      alert("Informe o endereço de partida e o endereço do destino para visualizar o mapa.");
+      return;
+    }
+    const origin = encodeURIComponent(route.origin);
+    const dest = encodeURIComponent(`${route.destination}${route.city ? ', ' + route.city : ''}`);
+    const wps = route.waypoints.length > 0 
+      ? `&waypoints=${route.waypoints.map(w => encodeURIComponent(w)).join('|')}` 
+      : '';
+    
+    window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${wps}&travelmode=driving`, '_blank');
+  };
+
   const handleStartTrip = () => {
     if (!selectedVehicle || !currentUser) return;
     
@@ -117,7 +131,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
       deleteScheduledTrip(scheduledTripId);
     }
 
-    alert('Viagem iniciada! Tenha uma excelente jornada.');
+    alert('Viagem iniciada! A rota foi salva no histórico para verificação futura.');
     setStep(1);
     setSelectedVehicle(null);
     setRoute({
@@ -287,14 +301,14 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
 
         {step === 3 && (
           <div className="p-8">
-            <h3 className="text-xl font-bold text-slate-800 mb-8">Confirmar Rota</h3>
+            <h3 className="text-xl font-bold text-slate-800 mb-8">Confirmar Rota de Navegação</h3>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               <div className="space-y-6">
                 <div>
-                  <label className="block text-xs font-write text-slate-400 uppercase tracking-widest mb-2">Ponto de Saída</label>
+                  <label className="block text-xs font-write text-slate-400 uppercase tracking-widest mb-2">Endereço de Partida</label>
                   <input
-                    placeholder="Ex: Garagem Norte"
+                    placeholder="Ex: Av. Paulista, 1000, São Paulo - SP"
                     value={route.origin}
                     onChange={(e) => setRoute({ ...route, origin: e.target.value })}
                     className="w-full p-4 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
@@ -302,13 +316,25 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                 </div>
 
                 <div>
-                  <label className="block text-xs font-write text-slate-400 uppercase tracking-widest mb-2">Destino Final</label>
+                  <label className="block text-xs font-write text-slate-400 uppercase tracking-widest mb-2">Endereço do Destino</label>
                   <input
-                    placeholder="Endereço / Nome do Local"
+                    placeholder="Ex: Rua das Flores, 50, Campinas - SP"
                     value={route.destination}
                     onChange={(e) => setRoute({ ...route, destination: e.target.value })}
                     className="w-full p-4 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
                   />
+                </div>
+
+                <div className="pt-2">
+                  <button 
+                    type="button"
+                    onClick={handlePreviewMap}
+                    className="w-full py-4 border-2 border-dashed border-indigo-200 text-indigo-600 rounded-2xl font-write text-[10px] uppercase tracking-widest hover:bg-indigo-50 transition-all flex items-center justify-center gap-2"
+                  >
+                    <i className="fas fa-map-location-dot text-lg"></i>
+                    Testar Rota no Google Maps
+                  </button>
+                  <p className="text-[9px] text-slate-400 text-center mt-2 font-bold uppercase">A rota acima será salva permanentemente nesta viagem</p>
                 </div>
 
                 {/* Waypoints review in Wizard */}
@@ -341,6 +367,11 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                     className="w-full p-4 rounded-xl border border-slate-200 text-center focus:ring-2 focus:ring-blue-500 outline-none font-write text-slate-800"
                   />
                 </div>
+              </div>
+              
+              <div className="bg-slate-50 rounded-3xl p-6 flex flex-col items-center justify-center border border-dashed border-slate-200">
+                <i className="fas fa-route text-4xl text-slate-200 mb-4"></i>
+                <p className="text-center text-xs text-slate-400 font-medium">Os endereços de partida e destino são fundamentais para o monitoramento e segurança da jornada.</p>
               </div>
             </div>
 
