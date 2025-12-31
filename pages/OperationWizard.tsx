@@ -311,7 +311,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                     placeholder="Ex: Av. Paulista, 1000, São Paulo - SP"
                     value={route.origin}
                     onChange={(e) => setRoute({ ...route, origin: e.target.value })}
-                    className="w-full p-4 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
+                    className="w-full p-4 bg-white rounded-2xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
                   />
                 </div>
 
@@ -321,7 +321,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                     placeholder="Ex: Rua das Flores, 50, Campinas - SP"
                     value={route.destination}
                     onChange={(e) => setRoute({ ...route, destination: e.target.value })}
-                    className="w-full p-4 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
+                    className="w-full p-4 bg-white rounded-2xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
                   />
                 </div>
 
@@ -357,14 +357,14 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                     placeholder="Cidade"
                     value={route.city}
                     onChange={(e) => setRoute({ ...route, city: e.target.value })}
-                    className="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
+                    className="w-full p-4 bg-white rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
                   />
                   <input
                     placeholder="UF"
                     maxLength={2}
                     value={route.state}
                     onChange={(e) => setRoute({ ...route, state: e.target.value.toUpperCase() })}
-                    className="w-full p-4 rounded-xl border border-slate-200 text-center focus:ring-2 focus:ring-blue-500 outline-none font-write text-slate-800"
+                    className="w-full p-4 bg-white rounded-xl border border-slate-200 text-center focus:ring-2 focus:ring-blue-500 outline-none font-write text-slate-800"
                   />
                 </div>
               </div>

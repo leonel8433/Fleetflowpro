@@ -35,6 +35,7 @@ interface FleetContextType {
   login: (username: string, pass: string) => boolean;
   logout: () => void;
   changePassword: (newPass: string) => void;
+  resetDatabase: () => void;
 }
 
 const FleetContext = createContext<FleetContextType | undefined>(undefined);
@@ -102,18 +103,9 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return saved ? JSON.parse(saved) : null;
   });
 
-  useEffect(() => {
-    localStorage.setItem('fleet_vehicles', JSON.stringify(vehicles));
-  }, [vehicles]);
-
-  useEffect(() => {
-    localStorage.setItem('fleet_active_trips', JSON.stringify(activeTrips));
-  }, [activeTrips]);
-
-  useEffect(() => {
-    localStorage.setItem('fleet_completed_trips', JSON.stringify(completedTrips));
-  }, [completedTrips]);
-
+  useEffect(() => { localStorage.setItem('fleet_vehicles', JSON.stringify(vehicles)); }, [vehicles]);
+  useEffect(() => { localStorage.setItem('fleet_active_trips', JSON.stringify(activeTrips)); }, [activeTrips]);
+  useEffect(() => { localStorage.setItem('fleet_completed_trips', JSON.stringify(completedTrips)); }, [completedTrips]);
   useEffect(() => { localStorage.setItem('fleet_drivers', JSON.stringify(drivers)); }, [drivers]);
   useEffect(() => { localStorage.setItem('fleet_checklists', JSON.stringify(checklists)); }, [checklists]);
   useEffect(() => { localStorage.setItem('fleet_maintenance', JSON.stringify(maintenanceRecords)); }, [maintenanceRecords]);
@@ -144,43 +136,35 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setDrivers(prev => prev.map(d => d.id === currentUser.id ? updatedUser : d));
   };
 
-  const addVehicle = (v: Vehicle) => setVehicles(prev => [...prev, v]);
-  
-  const updateVehicle = (id: string, updates: Partial<Vehicle>) => {
-    setVehicles(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
+  const resetDatabase = () => {
+    const keys = [
+      'fleet_vehicles', 'fleet_active_trips', 'fleet_completed_trips',
+      'fleet_drivers', 'fleet_checklists', 'fleet_maintenance',
+      'fleet_fines', 'fleet_occurrences', 'fleet_scheduled_trips'
+    ];
+    keys.forEach(k => localStorage.removeItem(k));
+    sessionStorage.removeItem('fleet_current_user');
+    window.location.reload();
   };
 
+  const addVehicle = (v: Vehicle) => setVehicles(prev => [...prev, v]);
+  const updateVehicle = (id: string, updates: Partial<Vehicle>) => setVehicles(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
   const startTrip = (trip: Trip, checklist: Checklist) => {
     setActiveTrips(prev => [...prev, trip]);
     setChecklists(prev => [...prev, checklist]);
-    setVehicles(prev => prev.map(v => 
-      v.id === trip.vehicleId ? { ...v, status: VehicleStatus.IN_USE, currentKm: checklist.km, fuelLevel: checklist.fuelLevel, lastChecklist: checklist } : v
-    ));
-    setDrivers(prev => prev.map(d => 
-      d.id === trip.driverId ? { ...d, activeVehicleId: trip.vehicleId } : d
-    ));
+    setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.IN_USE, currentKm: checklist.km, fuelLevel: checklist.fuelLevel, lastChecklist: checklist } : v));
+    setDrivers(prev => prev.map(d => d.id === trip.driverId ? { ...d, activeVehicleId: trip.vehicleId } : d));
   };
-
   const endTrip = (tripId: string, currentKm: number, endTime: string, expenses?: { fuel: number, other: number, notes: string }) => {
     const trip = activeTrips.find(t => t.id === tripId);
     if (!trip) return;
-    
     const distance = currentKm - trip.startKm;
-    const finishedTrip: Trip = { 
-      ...trip, 
-      endTime, 
-      distance,
-      fuelExpense: expenses?.fuel || 0,
-      otherExpense: expenses?.other || 0,
-      expenseNotes: expenses?.notes || ''
-    }; 
-    
+    const finishedTrip: Trip = { ...trip, endTime, distance, fuelExpense: expenses?.fuel || 0, otherExpense: expenses?.other || 0, expenseNotes: expenses?.notes || '' }; 
     setActiveTrips(prev => prev.filter(t => t.id !== tripId));
     setCompletedTrips(prev => [finishedTrip, ...prev]);
     setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm } : v));
     setDrivers(prev => prev.map(d => d.id === trip.driverId ? { ...d, activeVehicleId: undefined } : d));
   };
-
   const cancelTrip = (tripId: string) => {
     const trip = activeTrips.find(t => t.id === tripId);
     if (!trip) return;
@@ -188,19 +172,12 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE } : v));
     setDrivers(prev => prev.map(d => d.id === trip.driverId ? { ...d, activeVehicleId: undefined } : d));
   };
-
   const addMaintenanceRecord = (record: MaintenanceRecord) => {
     setMaintenanceRecords(prev => [record, ...prev]);
-    setVehicles(prev => prev.map(v => 
-      v.id === record.vehicleId ? { ...v, status: VehicleStatus.MAINTENANCE } : v
-    ));
+    setVehicles(prev => prev.map(v => v.id === record.vehicleId ? { ...v, status: VehicleStatus.MAINTENANCE } : v));
   };
-
   const resolveMaintenance = useCallback((vehicleId: string, recordId: string | null | undefined, currentKm: number, returnDate: string, finalCost?: number) => {
-    setVehicles(prev => prev.map(v => 
-      v.id === vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm } : v
-    ));
-
+    setVehicles(prev => prev.map(v => v.id === vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm } : v));
     setMaintenanceRecords(prev => {
       let targetId = recordId;
       if (!targetId) {
@@ -208,21 +185,11 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         targetId = openRecord?.id;
       }
       if (targetId) {
-        return prev.map(m => {
-          if (m.id === targetId) {
-            const updated: MaintenanceRecord = { ...m, returnDate };
-            if (finalCost !== undefined && !isNaN(finalCost)) {
-              updated.cost = finalCost;
-            }
-            return updated;
-          }
-          return m;
-        });
+        return prev.map(m => m.id === targetId ? { ...m, returnDate, cost: finalCost !== undefined ? finalCost : m.cost } : m);
       }
       return prev;
     });
   }, []);
-
   const addDriver = (d: Driver) => setDrivers(prev => [...prev, { ...d, passwordChanged: d.passwordChanged ?? false }]);
   const updateDriver = (id: string, updates: Partial<Driver>) => setDrivers(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
   const deleteDriver = (id: string) => setDrivers(prev => prev.filter(d => d.id !== id));
@@ -239,7 +206,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <FleetContext.Provider value={{
       vehicles, drivers, activeTrips, completedTrips, scheduledTrips, checklists, maintenanceRecords, notifications, fines, occurrences,
       addVehicle, updateVehicle, addDriver, updateDriver, deleteDriver, startTrip, updateTrip, addScheduledTrip, updateScheduledTrip, deleteScheduledTrip, endTrip, cancelTrip, addMaintenanceRecord, resolveMaintenance, addFine, deleteFine, addOccurrence, markNotificationAsRead,
-      currentUser, login, logout, changePassword
+      currentUser, login, logout, changePassword, resetDatabase
     }}>
       {children}
     </FleetContext.Provider>
