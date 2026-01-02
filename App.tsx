@@ -10,6 +10,7 @@ import TripMonitoring from './pages/TripMonitoring';
 import SchedulingPage from './pages/SchedulingPage';
 import ReportsPage from './pages/ReportsPage';
 import HistoryPage from './pages/HistoryPage';
+import ProfilePage from './pages/ProfilePage';
 import Login from './pages/Login';
 import ForceChangePassword from './pages/ForceChangePassword';
 
@@ -70,6 +71,8 @@ const AppContent: React.FC = () => {
         return <SchedulingPage />;
       case 'reports':
         return <ReportsPage />;
+      case 'profile':
+        return <ProfilePage />;
       default:
         return <DashboardOverview onStartSchedule={handleStartFromSchedule} onNavigate={setActiveTab} />;
     }

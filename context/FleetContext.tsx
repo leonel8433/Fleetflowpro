@@ -153,7 +153,28 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addVehicle = (v: Vehicle) => setVehicles(prev => [...prev, v]);
-  const updateVehicle = (id: string, updates: Partial<Vehicle>) => setVehicles(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
+  
+  const updateVehicle = (id: string, updates: Partial<Vehicle>) => {
+    setVehicles(prev => {
+      const updatedList = prev.map(v => v.id === id ? { ...v, ...updates } : v);
+      const vehicle = updatedList.find(v => v.id === id);
+      
+      // Lógica de alerta de combustível baixo via update direto
+      if (vehicle && updates.fuelLevel !== undefined && updates.fuelLevel < 10) {
+        const notification: AppNotification = {
+          id: Math.random().toString(36).substr(2, 9),
+          type: 'low_fuel',
+          title: 'Combustível Crítico',
+          message: `O veículo ${vehicle.plate} está com nível de combustível muito baixo (${updates.fuelLevel}%).`,
+          vehicleId: id,
+          timestamp: new Date().toISOString(),
+          isRead: false
+        };
+        setNotifications(nPrev => [notification, ...nPrev]);
+      }
+      return updatedList;
+    });
+  };
   
   const updateDriver = (id: string, updates: Partial<Driver>) => {
     setDrivers(prev => {
@@ -174,6 +195,22 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setChecklists(prev => [...prev, checklist]);
     setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.IN_USE, currentKm: checklist.km, fuelLevel: checklist.fuelLevel, lastChecklist: checklist } : v));
     setDrivers(prev => prev.map(d => d.id === trip.driverId ? { ...d, activeVehicleId: trip.vehicleId } : d));
+
+    // Lógica de alerta de combustível baixo via checklist de início de viagem
+    if (checklist.fuelLevel < 10) {
+      const vehicle = vehicles.find(v => v.id === trip.vehicleId);
+      const notification: AppNotification = {
+        id: Math.random().toString(36).substr(2, 9),
+        type: 'low_fuel',
+        title: 'Alerta de Combustível',
+        message: `O veículo ${vehicle?.plate || trip.vehicleId} iniciou a rota com nível crítico (${checklist.fuelLevel}%). Favor abastecer imediatamente.`,
+        vehicleId: trip.vehicleId,
+        driverId: trip.driverId,
+        timestamp: new Date().toISOString(),
+        isRead: false
+      };
+      setNotifications(prev => [notification, ...prev]);
+    }
   };
 
   const endTrip = (tripId: string, currentKm: number, endTime: string, expenses?: { fuel: number, other: number, notes: string }) => {

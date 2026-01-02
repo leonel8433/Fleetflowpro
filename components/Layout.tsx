@@ -26,6 +26,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
     { id: 'history', icon: 'fa-clock-rotate-left', label: 'Histórico', adminOnly: false },
     { id: 'monitoring', icon: 'fa-map-location-dot', label: 'Monitoramento', adminOnly: true },
     { id: 'reports', icon: 'fa-file-contract', label: 'Relatórios', adminOnly: false },
+    { id: 'profile', icon: 'fa-user-circle', label: 'Perfil', adminOnly: false },
   ];
 
   const visibleMenuItems = menuItems.filter(item => !item.adminOnly || isAdmin);
@@ -75,8 +76,8 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
 
         <div className="p-6">
           <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center font-bold overflow-hidden ring-2 ring-slate-100 ring-offset-2">
+            <div className="flex items-center gap-3 mb-3 cursor-pointer group" onClick={() => onTabChange('profile')}>
+              <div className="w-10 h-10 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center font-bold overflow-hidden ring-2 ring-slate-100 ring-offset-2 group-hover:ring-blue-200 transition-all">
                 {currentUser?.avatar ? (
                   <img src={currentUser.avatar} alt="" className="w-full h-full object-cover" />
                 ) : (
@@ -84,7 +85,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-write text-slate-800 truncate uppercase tracking-tighter">{currentUser?.name}</p>
+                <p className="text-xs font-write text-slate-800 truncate uppercase tracking-tighter group-hover:text-blue-600 transition-colors">{currentUser?.name}</p>
                 <p className="text-[10px] text-slate-400 truncate font-bold">@{currentUser?.username}</p>
               </div>
             </div>
@@ -167,7 +168,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
           {children}
         </div>
 
-        {/* Bottom Nav Mobile - Corrigido para mostrar todos os itens com suporte a scroll horizontal */}
+        {/* Bottom Nav Mobile */}
         <nav className="md:hidden bg-white/95 backdrop-blur-md border-t border-slate-100 flex items-center overflow-x-auto p-2 z-20 pb-safe custom-scrollbar">
           <div className="flex items-center gap-1 min-w-full">
             {visibleMenuItems.map(item => (
