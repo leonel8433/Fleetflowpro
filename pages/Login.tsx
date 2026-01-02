@@ -86,15 +86,6 @@ const Login: React.FC = () => {
             </p>
           </div>
         </div>
-        
-        {/* Demo Credentials Hint */}
-        <div className="mt-8 text-center bg-white/50 backdrop-blur-sm py-3 px-6 rounded-full border border-white inline-block left-1/2 -translate-x-1/2 relative shadow-sm">
-          <div className="flex items-center gap-6 text-[10px] font-bold uppercase tracking-tighter">
-            <span className="text-slate-400">Gestor: <b className="text-blue-600">admin / admin</b></span>
-            <div className="w-px h-3 bg-slate-200"></div>
-            <span className="text-slate-400">Motorista: <b className="text-blue-600">joao / 123</b></span>
-          </div>
-        </div>
       </div>
     </div>
   );

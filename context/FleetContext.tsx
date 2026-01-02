@@ -97,7 +97,11 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
+    const saved = localStorage.getItem('fleet_notifications');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [currentUser, setCurrentUser] = useState<Driver | null>(() => {
     const saved = sessionStorage.getItem('fleet_current_user');
     return saved ? JSON.parse(saved) : null;
@@ -112,6 +116,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => { localStorage.setItem('fleet_fines', JSON.stringify(fines)); }, [fines]);
   useEffect(() => { localStorage.setItem('fleet_occurrences', JSON.stringify(occurrences)); }, [occurrences]);
   useEffect(() => { localStorage.setItem('fleet_scheduled_trips', JSON.stringify(scheduledTrips)); }, [scheduledTrips]);
+  useEffect(() => { localStorage.setItem('fleet_notifications', JSON.stringify(notifications)); }, [notifications]);
 
   const login = (user: string, pass: string) => {
     const driver = drivers.find(d => d.username === user && d.password === pass);
@@ -140,7 +145,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const keys = [
       'fleet_vehicles', 'fleet_active_trips', 'fleet_completed_trips',
       'fleet_drivers', 'fleet_checklists', 'fleet_maintenance',
-      'fleet_fines', 'fleet_occurrences', 'fleet_scheduled_trips'
+      'fleet_fines', 'fleet_occurrences', 'fleet_scheduled_trips', 'fleet_notifications'
     ];
     keys.forEach(k => localStorage.removeItem(k));
     sessionStorage.removeItem('fleet_current_user');
@@ -153,7 +158,6 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateDriver = (id: string, updates: Partial<Driver>) => {
     setDrivers(prev => {
       const updatedList = prev.map(d => d.id === id ? { ...d, ...updates } : d);
-      // Se o usuário editado for o usuário logado, atualiza o currentUser também
       if (currentUser && id === currentUser.id) {
         const updatedUser = updatedList.find(d => d.id === id) || null;
         if (updatedUser) {
@@ -171,6 +175,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.IN_USE, currentKm: checklist.km, fuelLevel: checklist.fuelLevel, lastChecklist: checklist } : v));
     setDrivers(prev => prev.map(d => d.id === trip.driverId ? { ...d, activeVehicleId: trip.vehicleId } : d));
   };
+
   const endTrip = (tripId: string, currentKm: number, endTime: string, expenses?: { fuel: number, other: number, notes: string }) => {
     const trip = activeTrips.find(t => t.id === tripId);
     if (!trip) return;
@@ -181,6 +186,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm } : v));
     setDrivers(prev => prev.map(d => d.id === trip.driverId ? { ...d, activeVehicleId: undefined } : d));
   };
+
   const cancelTrip = (tripId: string) => {
     const trip = activeTrips.find(t => t.id === tripId);
     if (!trip) return;
@@ -188,10 +194,12 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE } : v));
     setDrivers(prev => prev.map(d => d.id === trip.driverId ? { ...d, activeVehicleId: undefined } : d));
   };
+
   const addMaintenanceRecord = (record: MaintenanceRecord) => {
     setMaintenanceRecords(prev => [record, ...prev]);
     setVehicles(prev => prev.map(v => v.id === record.vehicleId ? { ...v, status: VehicleStatus.MAINTENANCE } : v));
   };
+
   const resolveMaintenance = useCallback((vehicleId: string, recordId: string | null | undefined, currentKm: number, returnDate: string, finalCost?: number) => {
     setVehicles(prev => prev.map(v => v.id === vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm } : v));
     setMaintenanceRecords(prev => {
@@ -206,13 +214,31 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return prev;
     });
   }, []);
+
   const addDriver = (d: Driver) => setDrivers(prev => [...prev, { ...d, passwordChanged: d.passwordChanged ?? false }]);
   const deleteDriver = (id: string) => setDrivers(prev => prev.filter(d => d.id !== id));
   const updateTrip = (tripId: string, updates: Partial<Trip>) => setActiveTrips(prev => prev.map(t => t.id === tripId ? { ...t, ...updates } : t));
   const addScheduledTrip = (trip: ScheduledTrip) => setScheduledTrips(prev => [trip, ...prev]);
   const updateScheduledTrip = (id: string, updates: Partial<ScheduledTrip>) => setScheduledTrips(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   const deleteScheduledTrip = (id: string) => setScheduledTrips(prev => prev.filter(t => t.id !== id));
-  const addFine = (fine: Fine) => setFines(prev => [fine, ...prev]);
+
+  const addFine = (fine: Fine) => {
+    setFines(prev => [fine, ...prev]);
+    // Gera notificação automática para o motorista
+    const vehicle = vehicles.find(v => v.id === fine.vehicleId);
+    const notification: AppNotification = {
+      id: Math.random().toString(36).substr(2, 9),
+      type: 'new_fine',
+      title: 'Infração de Trânsito Registrada',
+      message: `Uma nova multa foi associada à sua conta no veículo ${vehicle?.plate}. Valor: R$ ${fine.value.toFixed(2)}.`,
+      vehicleId: fine.vehicleId,
+      driverId: fine.driverId,
+      timestamp: new Date().toISOString(),
+      isRead: false
+    };
+    setNotifications(prev => [notification, ...prev]);
+  };
+
   const deleteFine = (id: string) => setFines(prev => prev.filter(f => f.id !== id));
   const addOccurrence = (occ: Occurrence) => setOccurrences(prev => [occ, ...prev]);
   const markNotificationAsRead = (id: string) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));

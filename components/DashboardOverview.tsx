@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFleet } from '../context/FleetContext';
-import { VehicleStatus, Trip, MaintenanceRecord } from '../types';
+import { VehicleStatus, Trip, MaintenanceRecord, AppNotification } from '../types';
 
 interface DashboardOverviewProps {
   onStartSchedule?: (id: string) => void;
@@ -9,9 +9,12 @@ interface DashboardOverviewProps {
 }
 
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, onNavigate }) => {
-  const { vehicles, drivers, activeTrips, scheduledTrips, maintenanceRecords, currentUser, endTrip } = useFleet();
+  const { vehicles, drivers, activeTrips, scheduledTrips, maintenanceRecords, currentUser, endTrip, notifications, markNotificationAsRead } = useFleet();
   const [elapsedTime, setElapsedTime] = useState<string>('00:00:00');
   
+  // Alertas de Multa ao Logar
+  const [fineAlert, setFineAlert] = useState<AppNotification | null>(null);
+
   const isAdmin = currentUser?.username === 'admin';
   const myActiveTrip = useMemo(() => activeTrips.find(t => t.driverId === currentUser?.id), [activeTrips, currentUser]);
   
@@ -20,6 +23,16 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
       .filter(t => t.driverId === currentUser?.id)
       .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
   }, [scheduledTrips, currentUser]);
+
+  // Efeito para detectar multas não lidas ao logar
+  useEffect(() => {
+    if (currentUser && !isAdmin) {
+      const unreadFine = notifications.find(n => n.type === 'new_fine' && n.driverId === currentUser.id && !n.isRead);
+      if (unreadFine) {
+        setFineAlert(unreadFine);
+      }
+    }
+  }, [notifications, currentUser, isAdmin]);
 
   useEffect(() => {
     let interval: any;
@@ -94,6 +107,13 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
     }
   };
 
+  const acknowledgeFine = () => {
+    if (fineAlert) {
+      markNotificationAsRead(fineAlert.id);
+      setFineAlert(null);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-12">
       <div className="flex items-center justify-between">
@@ -102,6 +122,35 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
           <p className="text-xs text-slate-400 font-medium">Bem-vindo, {currentUser?.name}.</p>
         </div>
       </div>
+
+      {/* Alerta de Multa Crítico ao Motorista */}
+      {fineAlert && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-red-950/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl border-4 border-red-500 overflow-hidden animate-in zoom-in-95 duration-500">
+            <div className="p-8 bg-red-600 text-white text-center">
+              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                <i className="fas fa-triangle-exclamation text-4xl"></i>
+              </div>
+              <h3 className="text-2xl font-write uppercase tracking-tight">{fineAlert.title}</h3>
+            </div>
+            <div className="p-10 space-y-6 text-center">
+              <p className="text-slate-600 font-medium leading-relaxed">
+                {fineAlert.message}
+              </p>
+              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                 <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Atenção</p>
+                 <p className="text-xs text-slate-500 italic">As infrações de trânsito afetam sua pontuação na CNH corporativa. Favor dirigir com prudência.</p>
+              </div>
+              <button 
+                onClick={acknowledgeFine}
+                className="w-full py-5 bg-slate-900 text-white rounded-2xl font-write uppercase text-xs tracking-widest hover:bg-red-600 transition-all shadow-xl active:scale-95"
+              >
+                Estou Ciente e Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Card de Viagem Ativa */}
       {!isAdmin && myActiveTrip && (

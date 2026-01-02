@@ -27,7 +27,7 @@ export interface MaintenanceRecord {
   id: string;
   vehicleId: string;
   date: string;
-  returnDate?: string; // Data de retorno efetivo
+  returnDate?: string; 
   serviceType: string;
   cost: number;
   km: number;
@@ -61,7 +61,7 @@ export interface Driver {
   id: string;
   name: string;
   license: string;
-  category: string; // Categoria CNH: A, B, C, D, E, AB...
+  category: string; 
   email?: string;
   phone?: string;
   username: string;
@@ -117,6 +117,7 @@ export interface AppNotification {
   title: string;
   message: string;
   vehicleId: string;
+  driverId?: string; // Campo adicionado para filtros por motorista
   timestamp: string;
   isRead: boolean;
 }
