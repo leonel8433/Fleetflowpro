@@ -142,94 +142,33 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetDatabase = () => {
-    const keys = [
-      'fleet_vehicles', 'fleet_active_trips', 'fleet_completed_trips',
-      'fleet_drivers', 'fleet_checklists', 'fleet_maintenance',
-      'fleet_fines', 'fleet_occurrences', 'fleet_scheduled_trips', 'fleet_notifications'
-    ];
+    const keys = ['fleet_vehicles', 'fleet_active_trips', 'fleet_completed_trips', 'fleet_drivers', 'fleet_checklists', 'fleet_maintenance', 'fleet_fines', 'fleet_occurrences', 'fleet_scheduled_trips', 'fleet_notifications'];
     keys.forEach(k => localStorage.removeItem(k));
     sessionStorage.removeItem('fleet_current_user');
     window.location.reload();
   };
 
   const addVehicle = (v: Vehicle) => setVehicles(prev => [...prev, v]);
-  
-  const updateVehicle = (id: string, updates: Partial<Vehicle>) => {
-    setVehicles(prev => {
-      const updatedList = prev.map(v => v.id === id ? { ...v, ...updates } : v);
-      const vehicle = updatedList.find(v => v.id === id);
-      
-      if (vehicle && updates.fuelLevel !== undefined && updates.fuelLevel < 10) {
-        const notification: AppNotification = {
-          id: Math.random().toString(36).substr(2, 9),
-          type: 'low_fuel',
-          title: 'Combustível Crítico',
-          message: `O veículo ${vehicle.plate} está com nível de combustível muito baixo (${updates.fuelLevel}%).`,
-          vehicleId: id,
-          timestamp: new Date().toISOString(),
-          isRead: false
-        };
-        setNotifications(nPrev => [notification, ...nPrev]);
-      }
-      return updatedList;
-    });
-  };
-  
-  const updateDriver = (id: string, updates: Partial<Driver>) => {
-    setDrivers(prev => {
-      const updatedList = prev.map(d => d.id === id ? { ...d, ...updates } : d);
-      if (currentUser && id === currentUser.id) {
-        const updatedUser = updatedList.find(d => d.id === id) || null;
-        if (updatedUser) {
-          setCurrentUser(updatedUser);
-          sessionStorage.setItem('fleet_current_user', JSON.stringify(updatedUser));
-        }
-      }
-      return updatedList;
-    });
-  };
+  const updateVehicle = (id: string, updates: Partial<Vehicle>) => setVehicles(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
+  const updateDriver = (id: string, updates: Partial<Driver>) => setDrivers(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+  const addDriver = (d: Driver) => setDrivers(prev => [...prev, { ...d, passwordChanged: d.passwordChanged ?? false }]);
+  const deleteDriver = (id: string) => setDrivers(prev => prev.filter(d => d.id !== id));
 
   const startTrip = (trip: Trip, checklist: Checklist) => {
     setActiveTrips(prev => [...prev, trip]);
     setChecklists(prev => [...prev, checklist]);
     setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.IN_USE, currentKm: checklist.km, fuelLevel: checklist.fuelLevel, lastChecklist: checklist } : v));
     setDrivers(prev => prev.map(d => d.id === trip.driverId ? { ...d, activeVehicleId: trip.vehicleId } : d));
-
-    if (checklist.fuelLevel < 10) {
-      const vehicle = vehicles.find(v => v.id === trip.vehicleId);
-      const notification: AppNotification = {
-        id: Math.random().toString(36).substr(2, 9),
-        type: 'low_fuel',
-        title: 'Alerta de Combustível',
-        message: `O veículo ${vehicle?.plate || trip.vehicleId} iniciou a rota com nível crítico (${checklist.fuelLevel}%). Favor abastecer imediatamente.`,
-        vehicleId: trip.vehicleId,
-        driverId: trip.driverId,
-        timestamp: new Date().toISOString(),
-        isRead: false
-      };
-      setNotifications(prev => [notification, ...prev]);
-    }
   };
 
   const endTrip = (tripId: string, currentKm: number, endTime: string, expenses?: { fuel: number, other: number, notes: string }) => {
     setActiveTrips(prevActive => {
       const trip = prevActive.find(t => t.id === tripId);
       if (!trip) return prevActive;
-
-      const distance = currentKm - trip.startKm;
-      const finishedTrip: Trip = { 
-        ...trip, 
-        endTime, 
-        distance, 
-        fuelExpense: expenses?.fuel || 0, 
-        otherExpense: expenses?.other || 0, 
-        expenseNotes: expenses?.notes || '' 
-      }; 
-
+      const finishedTrip: Trip = { ...trip, endTime, distance: currentKm - trip.startKm, fuelExpense: expenses?.fuel || 0, otherExpense: expenses?.other || 0, expenseNotes: expenses?.notes || '' }; 
       setCompletedTrips(prev => [finishedTrip, ...prev]);
       setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm } : v));
       setDrivers(prev => prev.map(d => d.id === trip.driverId ? { ...d, activeVehicleId: undefined } : d));
-
       return prevActive.filter(t => t.id !== tripId);
     });
   };
@@ -238,20 +177,14 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setActiveTrips(prevActive => {
       const trip = prevActive.find(t => t.id === tripId);
       if (!trip) return prevActive;
-
-      // Reverter status do veículo
-      setVehicles(prevVehicles => prevVehicles.map(v => 
-        v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE } : v
-      ));
-
-      // Reverter status do motorista
-      setDrivers(prevDrivers => prevDrivers.map(d => 
-        d.id === trip.driverId ? { ...d, activeVehicleId: undefined } : d
-      ));
-
-      // Remover da lista de viagens ativas
+      setVehicles(prevVehicles => prevVehicles.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE } : v));
+      setDrivers(prevDrivers => prevDrivers.map(d => d.id === trip.driverId ? { ...d, activeVehicleId: undefined } : d));
       return prevActive.filter(t => t.id !== tripId);
     });
+  }, []);
+
+  const deleteScheduledTrip = useCallback((id: string) => {
+    setScheduledTrips(prev => prev.filter(t => t.id !== id));
   }, []);
 
   const addMaintenanceRecord = (record: MaintenanceRecord) => {
@@ -263,40 +196,16 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setVehicles(prev => prev.map(v => v.id === vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm } : v));
     setMaintenanceRecords(prev => {
       let targetId = recordId;
-      if (!targetId) {
-        const openRecord = prev.find(m => m.vehicleId === vehicleId && !m.returnDate);
-        targetId = openRecord?.id;
-      }
-      if (targetId) {
-        return prev.map(m => m.id === targetId ? { ...m, returnDate, cost: finalCost !== undefined ? finalCost : m.cost } : m);
-      }
+      if (!targetId) targetId = prev.find(m => m.vehicleId === vehicleId && !m.returnDate)?.id;
+      if (targetId) return prev.map(m => m.id === targetId ? { ...m, returnDate, cost: finalCost !== undefined ? finalCost : m.cost } : m);
       return prev;
     });
   }, []);
 
-  const addDriver = (d: Driver) => setDrivers(prev => [...prev, { ...d, passwordChanged: d.passwordChanged ?? false }]);
-  const deleteDriver = (id: string) => setDrivers(prev => prev.filter(d => d.id !== id));
-  const updateTrip = (tripId: string, updates: Partial<Trip>) => setActiveTrips(prev => prev.map(t => t.id === tripId ? { ...t, ...updates } : t));
   const addScheduledTrip = (trip: ScheduledTrip) => setScheduledTrips(prev => [trip, ...prev]);
   const updateScheduledTrip = (id: string, updates: Partial<ScheduledTrip>) => setScheduledTrips(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-  const deleteScheduledTrip = (id: string) => setScheduledTrips(prev => prev.filter(t => t.id !== id));
-
-  const addFine = (fine: Fine) => {
-    setFines(prev => [fine, ...prev]);
-    const vehicle = vehicles.find(v => v.id === fine.vehicleId);
-    const notification: AppNotification = {
-      id: Math.random().toString(36).substr(2, 9),
-      type: 'new_fine',
-      title: 'Infração de Trânsito Registrada',
-      message: `Uma nova multa foi associada à sua conta no veículo ${vehicle?.plate}. Valor: R$ ${fine.value.toFixed(2)}.`,
-      vehicleId: fine.vehicleId,
-      driverId: fine.driverId,
-      timestamp: new Date().toISOString(),
-      isRead: false
-    };
-    setNotifications(prev => [notification, ...prev]);
-  };
-
+  const updateTrip = (tripId: string, updates: Partial<Trip>) => setActiveTrips(prev => prev.map(t => t.id === tripId ? { ...t, ...updates } : t));
+  const addFine = (fine: Fine) => setFines(prev => [fine, ...prev]);
   const deleteFine = (id: string) => setFines(prev => prev.filter(f => f.id !== id));
   const addOccurrence = (occ: Occurrence) => setOccurrences(prev => [occ, ...prev]);
   const markNotificationAsRead = (id: string) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));

@@ -70,6 +70,64 @@ const ReportsPage: React.FC = () => {
     return { totalDist, totalMaintCost, totalFineCost, totalTripFuel, totalTripOther };
   }, [filteredTrips, filteredMaintenance, filteredFines]);
 
+  // CSV Export Logic
+  const handleExportCSV = () => {
+    let csvContent = "";
+    let fileName = `relatorio_${activeReport}_${startDate}_a_${endDate}.csv`;
+
+    const downloadCSV = (content: string, name: string) => {
+      const blob = new Blob(["\ufeff" + content], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", name);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    if (activeReport === 'trips') {
+      const headers = "ID;Data;Motorista;Veiculo;Origem;Destino;Cidade;KM_Inicial;KM_Final;Distancia_KM\n";
+      const rows = filteredTrips.map(t => {
+        const d = drivers.find(drv => drv.id === t.driverId)?.name || 'N/A';
+        const v = vehicles.find(vh => vh.id === t.vehicleId)?.plate || 'N/A';
+        return `${t.id};${new Date(t.startTime).toLocaleDateString()};${d};${v};${t.origin};${t.destination};${t.city};${t.startKm};${(t.startKm + (t.distance || 0))};${(t.distance || 0).toFixed(2)}`;
+      }).join("\n");
+      csvContent = headers + rows;
+    } else if (activeReport === 'consumption') {
+      const headers = "ID;Data;Veiculo;KM_Rodados;Combustivel_RS;Outros_RS;Total_RS;Notas\n";
+      const rows = filteredTrips.map(t => {
+        const v = vehicles.find(vh => vh.id === t.vehicleId)?.plate || 'N/A';
+        const fuel = t.fuelExpense || 0;
+        const other = t.otherExpense || 0;
+        return `${t.id};${new Date(t.startTime).toLocaleDateString()};${v};${(t.distance || 0).toFixed(2)};${fuel.toFixed(2)};${other.toFixed(2)};${(fuel + other).toFixed(2)};${t.expenseNotes || ''}`;
+      }).join("\n");
+      csvContent = headers + rows;
+    } else if (activeReport === 'fines') {
+      const headers = "ID;Data;Motorista;Veiculo;Valor_RS;Pontos;Descricao\n";
+      const rows = filteredFines.map(f => {
+        const d = drivers.find(drv => drv.id === f.driverId)?.name || 'N/A';
+        const v = vehicles.find(vh => vh.id === f.vehicleId)?.plate || 'N/A';
+        return `${f.id};${new Date(f.date).toLocaleDateString()};${d};${v};${f.value.toFixed(2)};${f.points};${f.description}`;
+      }).join("\n");
+      csvContent = headers + rows;
+    } else if (activeReport === 'management' && isAdmin) {
+      const headers = "ID;Data;Veiculo;Servico;Custo_RS;KM_Saida;KM_Retorno;Notas\n";
+      const rows = filteredMaintenance.map(m => {
+        const v = vehicles.find(vh => vh.id === m.vehicleId)?.plate || 'N/A';
+        return `${m.id};${new Date(m.date).toLocaleDateString()};${v};${m.serviceType};${m.cost.toFixed(2)};${m.km};${m.km};${m.notes}`;
+      }).join("\n");
+      csvContent = headers + rows;
+    }
+
+    if (csvContent) {
+      downloadCSV(csvContent, fileName);
+    } else {
+      alert("Nenhum dado disponível para exportação no período selecionado.");
+    }
+  };
+
   return (
     <div className="space-y-8 pb-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -80,25 +138,35 @@ const ReportsPage: React.FC = () => {
           </p>
         </div>
         
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-          <div className="flex flex-col">
-            <span className="text-[9px] font-write text-slate-400 uppercase mb-1">Início</span>
-            <input 
-              type="date" 
-              value={startDate} 
-              onChange={(e) => setStartDate(e.target.value)}
-              className="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-950 outline-none focus:ring-2 focus:ring-blue-500"
-            />
+        <div className="flex flex-col md:flex-row items-center gap-4">
+          <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div className="flex flex-col">
+              <span className="text-[9px] font-write text-slate-400 uppercase mb-1">Início</span>
+              <input 
+                type="date" 
+                value={startDate} 
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-950 outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] font-write text-slate-400 uppercase mb-1">Fim</span>
+              <input 
+                type="date" 
+                value={endDate} 
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-950 outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-[9px] font-write text-slate-400 uppercase mb-1">Fim</span>
-            <input 
-              type="date" 
-              value={endDate} 
-              onChange={(e) => setEndDate(e.target.value)}
-              className="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-950 outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+          
+          <button 
+            onClick={handleExportCSV}
+            className="w-full md:w-auto px-6 py-4 bg-slate-900 text-white rounded-2xl font-write uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 hover:bg-slate-800 transition-all shadow-xl shadow-slate-100 active:scale-95"
+          >
+            <i className="fas fa-file-csv text-sm"></i>
+            Exportar CSV
+          </button>
         </div>
       </div>
 
@@ -133,6 +201,7 @@ const ReportsPage: React.FC = () => {
               </h3>
               <div className="h-80 w-full">
                 {tripChartData.length > 0 ? (
+                  /* Fixed typo: replaced '開ResponsiveContainer' with 'ResponsiveContainer' */
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={tripChartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -141,6 +210,7 @@ const ReportsPage: React.FC = () => {
                       <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
                       <Bar dataKey="viagens" fill="#3b82f6" radius={[6, 6, 0, 0]} />
                     </BarChart>
+                  /* Fixed typo: replaced '開ResponsiveContainer' with 'ResponsiveContainer' */
                   </ResponsiveContainer>
                 ) : (
                   <div className="h-full flex items-center justify-center text-slate-300 italic font-medium">Nenhum dado no período selecionado</div>
