@@ -9,7 +9,7 @@ interface DashboardOverviewProps {
 }
 
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, onNavigate }) => {
-  const { vehicles, drivers, activeTrips, scheduledTrips, maintenanceRecords, currentUser, endTrip, notifications, markNotificationAsRead, deleteScheduledTrip } = useFleet();
+  const { vehicles, drivers, activeTrips, scheduledTrips, maintenanceRecords, currentUser, endTrip, cancelTrip, notifications, markNotificationAsRead, deleteScheduledTrip } = useFleet();
   const [elapsedTime, setElapsedTime] = useState<string>('00:00:00');
   
   // Alertas de Multa ao Logar
@@ -88,6 +88,13 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
       setOtherExpense('0');
       setExpenseNotes('');
       setShowFinishModal(true);
+    }
+  };
+
+  const handleCancelActiveTrip = () => {
+    if (myActiveTrip && window.confirm('Deseja realmente cancelar esta viagem em curso? O veículo ficará disponível novamente.')) {
+      cancelTrip(myActiveTrip.id);
+      alert('Viagem cancelada com sucesso.');
     }
   };
 
@@ -193,18 +200,24 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
               </div>
             </div>
 
-            <div className="w-full lg:w-72 flex flex-col gap-4 justify-center">
+            <div className="w-full lg:w-72 flex flex-col gap-3 justify-center">
               <button 
                 onClick={handleOpenGPS}
-                className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-write text-xs uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3 border border-blue-400/20 active:scale-95"
+                className="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl font-write text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3 border border-blue-400/20 active:scale-95"
               >
-                <i className="fas fa-map-location-dot text-xl"></i> Reabrir GPS
+                <i className="fas fa-map-location-dot text-lg"></i> Reabrir GPS
               </button>
               <button 
                 onClick={handleFinalArrival}
-                className="w-full py-5 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-write text-xs uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3 border border-emerald-400/20 active:scale-95 animate-bounce-subtle"
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-write text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3 border border-emerald-400/20 active:scale-95"
               >
-                <i className="fas fa-flag-checkered text-xl"></i> Cheguei ao Destino
+                <i className="fas fa-flag-checkered text-lg"></i> Cheguei ao Destino
+              </button>
+              <button 
+                onClick={handleCancelActiveTrip}
+                className="w-full py-3 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl font-write text-[9px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 border border-red-600/30 active:scale-95"
+              >
+                <i className="fas fa-ban"></i> Cancelar Viagem
               </button>
             </div>
           </div>
@@ -323,7 +336,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
       {/* Modal Finalizar Viagem */}
       {showFinishModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
+          <div className="bg-white w-full max-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
             <div className="p-8 bg-emerald-600 text-white flex flex-col gap-2">
               <h3 className="text-2xl font-write uppercase tracking-tight">Ponto de Chegada</h3>
               <p className="text-[10px] font-bold uppercase opacity-80 tracking-widest">Registre o KM e custos finais da rota</p>

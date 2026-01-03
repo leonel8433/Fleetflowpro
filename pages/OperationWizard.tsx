@@ -120,6 +120,12 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
     onComplete?.();
   };
 
+  const handleAbortOperation = () => {
+    if (window.confirm('Deseja cancelar o início desta viagem e voltar ao menu principal?')) {
+      onComplete?.();
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto py-4">
       <div className="flex items-center justify-between mb-10 px-4">
@@ -196,7 +202,8 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
               </div>
             </div>
 
-            <div className="flex justify-end pt-4">
+            <div className="flex justify-between items-center pt-4">
+              <button onClick={handleAbortOperation} className="text-[10px] font-write text-red-500 uppercase tracking-widest hover:text-red-700">Cancelar Início</button>
               <button disabled={!route.city || !route.state || !route.origin || !route.destination} onClick={() => setStep(2)} className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-write uppercase text-xs tracking-widest hover:bg-blue-900 disabled:opacity-30 transition-all shadow-xl shadow-slate-200">Próximo: Veículo <i className="fas fa-arrow-right ml-2"></i></button>
             </div>
           </div>
@@ -234,7 +241,10 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
 
             <div className="mt-10 flex justify-between pt-6 border-t border-slate-50">
               <button onClick={() => setStep(1)} className="px-8 py-4 text-slate-400 font-write uppercase text-[10px] tracking-widest hover:text-slate-900">Voltar</button>
-              <button disabled={!selectedVehicle} onClick={() => setStep(3)} className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl disabled:opacity-20 transition-all">Próximo: Checklist</button>
+              <div className="flex gap-4">
+                <button onClick={handleAbortOperation} className="px-6 py-4 text-red-500 font-write uppercase text-[9px] tracking-widest">Abortar</button>
+                <button disabled={!selectedVehicle} onClick={() => setStep(3)} className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl disabled:opacity-20 transition-all">Próximo: Checklist</button>
+              </div>
             </div>
           </div>
         )}
@@ -250,7 +260,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
             
             <div className="space-y-8">
               <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100">
-                <label className="block text-[10px] font-write text-slate-400 uppercase tracking-widest mb-4">KM Atual no Painel</label>
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-4 tracking-widest">KM Atual no Painel</label>
                 <input type="number" value={checklist.km} onChange={(e) => setChecklist({ ...checklist, km: parseInt(e.target.value) || 0 })} className={`w-full p-5 rounded-3xl border-2 font-write text-slate-900 text-3xl text-center focus:ring-4 outline-none transition-all ${isKmInvalid ? 'border-red-400 bg-red-50 ring-red-100' : 'border-slate-200 bg-white focus:ring-blue-50 shadow-inner'}`} />
                 {isKmInvalid && <p className="text-[10px] mt-3 text-red-500 font-bold uppercase text-center">KM inválido: deve ser maior ou igual a {selectedVehicle?.currentKm}</p>}
               </div>
@@ -270,11 +280,25 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                   );
                 })}
               </div>
+
+              {/* Campo de Anotações do Condutor */}
+              <div className="pt-4">
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-3 tracking-widest">Anotações do Condutor (Opcional)</label>
+                <textarea 
+                  placeholder="Descreva aqui se notar algum detalhe no veículo (riscos, luzes acesas, etc)..." 
+                  value={checklist.comments} 
+                  onChange={(e) => setChecklist({ ...checklist, comments: e.target.value })}
+                  className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-900 text-xs min-h-[120px] shadow-inner"
+                />
+              </div>
             </div>
 
             <div className="mt-12 flex justify-between pt-8 border-t border-slate-50">
               <button onClick={() => setStep(2)} className="px-8 py-4 text-slate-400 font-write uppercase text-[10px] tracking-widest">Trocar Veículo</button>
-              <button disabled={!isChecklistValid} onClick={() => setStep(4)} className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl disabled:opacity-20 transition-all">Revisar e Iniciar</button>
+              <div className="flex gap-4">
+                <button onClick={handleAbortOperation} className="px-6 py-4 text-red-500 font-write uppercase text-[9px] tracking-widest">Desistir</button>
+                <button disabled={!isChecklistValid} onClick={() => setStep(4)} className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl disabled:opacity-20 transition-all">Revisar e Iniciar</button>
+              </div>
             </div>
           </div>
         )}
@@ -302,6 +326,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
               <button onClick={() => setStep(3)} className="flex-1 py-5 text-slate-400 font-write uppercase text-[10px] tracking-widest border border-slate-100 rounded-2xl">Voltar Checklist</button>
               <button onClick={handleStartTrip} className="flex-[2] bg-emerald-600 text-white py-6 rounded-3xl font-write uppercase text-sm tracking-[0.3em] shadow-2xl shadow-emerald-100 hover:bg-emerald-700 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-4"><i className="fas fa-play"></i> INICIAR VIAGEM AGORA</button>
             </div>
+            <button onClick={handleAbortOperation} className="w-full text-center text-[10px] font-write text-slate-400 uppercase tracking-widest hover:text-red-500 mt-4">Cancelar tudo e voltar</button>
           </div>
         )}
       </div>
