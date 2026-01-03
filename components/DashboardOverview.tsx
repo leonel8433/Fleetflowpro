@@ -15,9 +15,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
   const isAdmin = currentUser?.username === 'admin';
   const myActiveTrip = useMemo(() => activeTrips.find(t => t.driverId === currentUser?.id), [activeTrips, currentUser]);
   
-  // Filtro rigoroso: Apenas agendamentos onde o driverId corresponde ao ID do usuário atual
   const myScheduledTrips = useMemo(() => {
-    if (isAdmin) return []; // Admin vê a visão gerencial, não a escala pessoal
+    if (isAdmin) return [];
     return scheduledTrips
       .filter(t => t.driverId === currentUser?.id)
       .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
@@ -41,6 +40,9 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
 
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [endKm, setEndKm] = useState<number>(0);
+  const [fuelExpense, setFuelExpense] = useState<number>(0);
+  const [otherExpense, setOtherExpense] = useState<number>(0);
+  const [expenseNotes, setExpenseNotes] = useState<string>('');
 
   const confirmFinish = () => {
     if (myActiveTrip) {
@@ -48,8 +50,18 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
         alert("O KM final deve ser maior que o KM inicial.");
         return;
       }
-      endTrip(myActiveTrip.id, endKm, new Date().toISOString());
+      endTrip(myActiveTrip.id, endKm, new Date().toISOString(), {
+        fuel: fuelExpense,
+        other: otherExpense,
+        notes: expenseNotes
+      });
+      
+      // Reset states
       setShowFinishModal(false);
+      setFuelExpense(0);
+      setOtherExpense(0);
+      setExpenseNotes('');
+      
       alert('Viagem encerrada com sucesso! Histórico profissional atualizado.');
     }
   };
@@ -153,19 +165,39 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
 
       {showFinishModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 space-y-8 animate-in zoom-in-95 duration-300">
-            <div className="text-center">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl p-10 custom-scrollbar overflow-y-auto max-h-[90vh] animate-in zoom-in-95 duration-300">
+            <div className="text-center mb-8">
                <h3 className="text-2xl font-write uppercase text-slate-800 tracking-tight">Finalização de Rota</h3>
-               <p className="text-xs text-slate-400 font-medium mt-1">Informe a quilometragem final do veículo</p>
+               <p className="text-xs text-slate-400 font-medium mt-1">Registre o fechamento e despesas da jornada</p>
             </div>
-            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-               <label className="block text-[10px] font-write text-slate-400 uppercase text-center mb-4 tracking-widest font-bold">Odômetro no Painel</label>
-               <input type="number" value={endKm} onChange={(e) => setEndKm(parseInt(e.target.value))} className="w-full bg-transparent outline-none font-write text-5xl text-slate-950 text-center" autoFocus />
-               <p className="text-[9px] text-slate-400 text-center mt-3 uppercase font-bold tracking-widest">KM Inicial: {myActiveTrip?.startKm}</p>
+            
+            <div className="space-y-6">
+              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                <label className="block text-[10px] font-write text-slate-400 uppercase text-center mb-4 tracking-widest font-bold">Odômetro no Painel (KM)</label>
+                <input type="number" value={endKm} onChange={(e) => setEndKm(parseInt(e.target.value) || 0)} className="w-full bg-transparent outline-none font-write text-5xl text-slate-950 text-center" autoFocus />
+                <p className="text-[9px] text-slate-400 text-center mt-3 uppercase font-bold tracking-widest">KM Inicial: {myActiveTrip?.startKm}</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <label className="block text-[9px] font-write text-slate-400 uppercase mb-2 tracking-widest font-bold">Combustível (R$)</label>
+                  <input type="number" step="0.01" value={fuelExpense} onChange={(e) => setFuelExpense(parseFloat(e.target.value) || 0)} className="w-full bg-transparent outline-none font-write text-xl text-slate-950" placeholder="0,00" />
+                </div>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <label className="block text-[9px] font-write text-slate-400 uppercase mb-2 tracking-widest font-bold">Outros Custos (R$)</label>
+                  <input type="number" step="0.01" value={otherExpense} onChange={(e) => setOtherExpense(parseFloat(e.target.value) || 0)} className="w-full bg-transparent outline-none font-write text-xl text-slate-950" placeholder="0,00" />
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                <label className="block text-[9px] font-write text-slate-400 uppercase mb-2 tracking-widest font-bold">Ocorrências / Observações</label>
+                <textarea value={expenseNotes} onChange={(e) => setExpenseNotes(e.target.value)} className="w-full bg-transparent outline-none font-write text-xs text-slate-950 min-h-[80px]" placeholder="Relate sinistros, atrasos ou problemas técnicos..." />
+              </div>
             </div>
-            <div className="flex gap-4">
+
+            <div className="flex gap-4 mt-8">
               <button onClick={() => setShowFinishModal(false)} className="flex-1 py-5 text-slate-400 font-write uppercase text-[10px] tracking-widest font-bold">Voltar</button>
-              <button onClick={confirmFinish} className="flex-[2] py-5 bg-emerald-600 text-white rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl shadow-emerald-100 active:scale-95 transition-all">Confirmar KM</button>
+              <button onClick={confirmFinish} className="flex-[2] py-5 bg-emerald-600 text-white rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl shadow-emerald-100 active:scale-95 transition-all">Confirmar e Encerrar</button>
             </div>
           </div>
         </div>

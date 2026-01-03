@@ -58,6 +58,10 @@ const TripMonitoring: React.FC = () => {
   const { activeTrips, vehicles, drivers, updateTrip, endTrip, cancelTrip } = useFleet();
   const [finishingTripId, setFinishingTripId] = useState<string | null>(null);
   const [endKm, setEndKm] = useState<number>(0);
+  const [fuelExpense, setFuelExpense] = useState<number>(0);
+  const [otherExpense, setOtherExpense] = useState<number>(0);
+  const [expenseNotes, setExpenseNotes] = useState<string>('');
+  
   const [editingRouteTrip, setEditingRouteTrip] = useState<Trip | null>(null);
   const [editRouteForm, setEditRouteForm] = useState({ destination: '', waypoints: [] as string[] });
 
@@ -80,8 +84,16 @@ const TripMonitoring: React.FC = () => {
 
   const confirmFinish = () => {
     if (finishingTripId) {
-      endTrip(finishingTripId, endKm, new Date().toISOString());
+      endTrip(finishingTripId, endKm, new Date().toISOString(), {
+        fuel: fuelExpense,
+        other: otherExpense,
+        notes: expenseNotes
+      });
+      
       setFinishingTripId(null);
+      setFuelExpense(0);
+      setOtherExpense(0);
+      setExpenseNotes('');
       alert('Operação encerrada com sucesso!');
     }
   };
@@ -225,24 +237,44 @@ const TripMonitoring: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Finalizar */}
+      {/* Modal Finalizar Remoto */}
       {finishingTripId && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            <div className="p-8 bg-emerald-600 text-white"><h3 className="text-xl font-write uppercase tracking-tight">Encerrar Operação</h3></div>
+          <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden custom-scrollbar overflow-y-auto max-h-[90vh] animate-in zoom-in-95 duration-300">
+            <div className="p-8 bg-emerald-600 text-white">
+              <h3 className="text-xl font-write uppercase tracking-tight">Encerrar Operação Remotamente</h3>
+              <p className="text-[10px] text-emerald-100 font-bold uppercase mt-1 tracking-widest">Ação de Gestão Administrativa</p>
+            </div>
             <div className="p-10 space-y-6">
-              <div>
-                <label className="block text-[10px] font-write text-slate-400 uppercase mb-3">Odômetro Final no Painel (KM)</label>
+              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-3 text-center font-bold tracking-widest">Odômetro Final no Painel (KM)</label>
                 <input 
                   type="number" 
                   value={endKm} 
-                  onChange={(e) => setEndKm(parseInt(e.target.value))} 
-                  className="w-full px-5 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none font-write text-2xl text-slate-900 text-center" 
+                  onChange={(e) => setEndKm(parseInt(e.target.value) || 0)} 
+                  className="w-full px-5 py-5 bg-transparent outline-none font-write text-2xl text-slate-900 text-center" 
                 />
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <label className="block text-[9px] font-write text-slate-400 uppercase mb-2 tracking-widest font-bold">Combustível (R$)</label>
+                  <input type="number" step="0.01" value={fuelExpense} onChange={(e) => setFuelExpense(parseFloat(e.target.value) || 0)} className="w-full bg-transparent outline-none font-write text-xl text-slate-950" placeholder="0,00" />
+                </div>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <label className="block text-[9px] font-write text-slate-400 uppercase mb-2 tracking-widest font-bold">Outros Custos (R$)</label>
+                  <input type="number" step="0.01" value={otherExpense} onChange={(e) => setOtherExpense(parseFloat(e.target.value) || 0)} className="w-full bg-transparent outline-none font-write text-xl text-slate-950" placeholder="0,00" />
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                <label className="block text-[9px] font-write text-slate-400 uppercase mb-2 tracking-widest font-bold">Relato de Ocorrência</label>
+                <textarea value={expenseNotes} onChange={(e) => setExpenseNotes(e.target.value)} className="w-full bg-transparent outline-none font-write text-xs text-slate-950 min-h-[80px]" placeholder="Informações adicionais sobre o trajeto..." />
+              </div>
+
               <div className="flex gap-4 pt-6">
                 <button onClick={() => setFinishingTripId(null)} className="flex-1 py-5 text-slate-400 font-write uppercase text-[10px] tracking-widest">Voltar</button>
-                <button onClick={confirmFinish} className="flex-[2] py-5 bg-emerald-600 text-white rounded-2xl font-write uppercase text-xs tracking-[0.2em] shadow-xl shadow-emerald-100">Confirmar Fim</button>
+                <button onClick={confirmFinish} className="flex-[2] py-5 bg-emerald-600 text-white rounded-2xl font-write uppercase text-xs tracking-[0.2em] shadow-xl shadow-emerald-100">Finalizar Rota</button>
               </div>
             </div>
           </div>
