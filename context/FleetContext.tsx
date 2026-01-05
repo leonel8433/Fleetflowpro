@@ -69,25 +69,29 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         apiService.getChecklists()
       ]);
       
-      if (d.length === 0) {
-        const admin = { id: 'admin', name: 'Gestor de Frota', license: '0000', category: 'AB', username: 'admin', password: 'admin', passwordChanged: true };
-        await apiService.saveDriver(admin);
-        setDrivers([admin]);
-      } else {
-        setDrivers(d);
-      }
+      setVehicles(v || []);
+      setDrivers(d || []);
+      setActiveTrips(a || []);
+      setScheduledTrips(s || []);
+      setCompletedTrips(c || []);
+      setMaintenanceRecords(m || []);
+      setFines(f || []);
+      setNotifications(n || []);
+      setChecklists(ch || []);
 
-      setVehicles(v);
-      setActiveTrips(a);
-      setScheduledTrips(s);
-      setCompletedTrips(c);
-      setMaintenanceRecords(m);
-      setFines(f);
-      setNotifications(n);
-      setChecklists(ch);
+      // Se não houver nenhum motorista e a API falhar ou retornar vazio, o login Admin local ainda deve funcionar
+      // Mas idealmente o Admin já vem do banco via SQL fornecido.
       
       const savedUser = sessionStorage.getItem('fleet_current_user');
-      if (savedUser) setCurrentUser(JSON.parse(savedUser));
+      if (savedUser) {
+        try {
+          setCurrentUser(JSON.parse(savedUser));
+        } catch(e) {
+          sessionStorage.removeItem('fleet_current_user');
+        }
+      }
+    } catch (error) {
+      console.error("Erro na carga inicial de dados:", error);
     } finally {
       setIsLoading(false);
     }
@@ -99,13 +103,18 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const login = async (user: string, pass: string) => {
     setIsLoading(true);
-    const driver = await apiService.login(user, pass);
-    setIsLoading(false);
-    if (driver) {
-      setCurrentUser(driver);
-      sessionStorage.setItem('fleet_current_user', JSON.stringify(driver));
-      return true;
+    try {
+      const driver = await apiService.login(user, pass);
+      if (driver) {
+        setCurrentUser(driver);
+        sessionStorage.setItem('fleet_current_user', JSON.stringify(driver));
+        setIsLoading(false);
+        return true;
+      }
+    } catch (e) {
+      console.error(e);
     }
+    setIsLoading(false);
     return false;
   };
 
@@ -172,8 +181,10 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteDriver = async (id: string) => {
+    setIsLoading(true);
     await apiService.deleteDriver(id);
     setDrivers(prev => prev.filter(d => d.id !== id));
+    setIsLoading(false);
   };
 
   const addVehicle = async (v: Vehicle) => {
@@ -231,7 +242,6 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await apiService.saveFine(f);
     setFines(prev => [f, ...prev]);
     
-    // Geração automática de notificação para o motorista
     const vehicle = vehicles.find(v => v.id === f.vehicleId);
     const notification: AppNotification = {
       id: Math.random().toString(36).substr(2, 9),
@@ -277,9 +287,9 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetDatabase = useCallback(() => {
-    localStorage.clear();
-    sessionStorage.clear();
-    window.location.reload();
+    // Em modo Cloud, o resetDatabase deveria limpar o banco no servidor. 
+    // Por segurança, vamos apenas avisar.
+    alert("Para resetar o banco de dados em produção, utilize o phpMyAdmin.");
   }, []);
 
   const contextValue = useMemo(() => ({

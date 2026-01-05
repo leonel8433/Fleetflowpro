@@ -19,6 +19,7 @@ const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
   const [showFineAlert, setShowFineAlert] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const isAdmin = currentUser?.username === 'admin';
 
@@ -34,7 +35,20 @@ const AppContent: React.FC = () => {
       setActiveTab('operation');
     };
     window.addEventListener('start-schedule', handleStartSchedule);
-    return () => window.removeEventListener('start-schedule', handleStartSchedule);
+    
+    // Captura erros globais de fetch
+    const handleGlobalError = (event: PromiseRejectionEvent) => {
+      if (event.reason instanceof Error && event.reason.message.includes('Failed to fetch')) {
+        setConnectionError('Não foi possível conectar ao servidor central. Verifique sua conexão.');
+        setTimeout(() => setConnectionError(null), 5000);
+      }
+    };
+    window.addEventListener('unhandledrejection', handleGlobalError);
+
+    return () => {
+      window.removeEventListener('start-schedule', handleStartSchedule);
+      window.removeEventListener('unhandledrejection', handleGlobalError);
+    };
   }, []);
 
   // Dispara o alerta de multas se houver notificações não lidas ao logar
@@ -79,13 +93,29 @@ const AppContent: React.FC = () => {
       setActiveTab(tab);
       if (tab !== 'operation') setSelectedScheduleId(null);
     }}>
-      {/* Overlay de Sincronização */}
-      {isLoading && (
-        <div className="fixed top-4 right-4 z-[999] bg-white/90 backdrop-blur-md px-6 py-3 rounded-2xl shadow-2xl border border-slate-100 flex items-center gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
-           <div className="w-5 h-5 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-           <span className="text-[10px] font-write text-slate-600 uppercase tracking-widest">Sincronizando...</span>
-        </div>
-      )}
+      {/* Indicador de Status da Nuvem */}
+      <div className="fixed top-24 right-4 z-[999] flex flex-col gap-2 pointer-events-none">
+        {isLoading && (
+          <div className="bg-white/90 backdrop-blur-md px-6 py-3 rounded-2xl shadow-2xl border border-slate-100 flex items-center gap-4 animate-in fade-in slide-in-from-right-4 duration-300 pointer-events-auto">
+             <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+             <span className="text-[9px] font-write text-slate-600 uppercase tracking-widest">Cloud Sync...</span>
+          </div>
+        )}
+        
+        {connectionError && (
+          <div className="bg-red-500 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in shake duration-500 pointer-events-auto">
+             <i className="fas fa-cloud-slash text-xs"></i>
+             <span className="text-[9px] font-write uppercase tracking-widest">{connectionError}</span>
+          </div>
+        )}
+
+        {!isLoading && !connectionError && (
+          <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl border border-emerald-100 flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity pointer-events-auto">
+            <i className="fas fa-cloud-check text-[10px]"></i>
+            <span className="text-[8px] font-bold uppercase tracking-widest">Base de Dados Online</span>
+          </div>
+        )}
+      </div>
 
       {/* Alerta de Novas Multas Pós-Login */}
       {showFineAlert && (
