@@ -79,9 +79,6 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setNotifications(n || []);
       setChecklists(ch || []);
 
-      // Se não houver nenhum motorista e a API falhar ou retornar vazio, o login Admin local ainda deve funcionar
-      // Mas idealmente o Admin já vem do banco via SQL fornecido.
-      
       const savedUser = sessionStorage.getItem('fleet_current_user');
       if (savedUser) {
         try {
@@ -126,93 +123,125 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const changePassword = async (newPass: string) => {
     if (!currentUser) return;
     setIsLoading(true);
-    const updated = { ...currentUser, password: newPass, passwordChanged: true };
-    await apiService.saveDriver(updated);
-    setCurrentUser(updated);
-    setDrivers(prev => prev.map(d => d.id === currentUser.id ? updated : d));
-    sessionStorage.setItem('fleet_current_user', JSON.stringify(updated));
-    setIsLoading(false);
-  };
-
-  const startTrip = async (trip: Trip, checklist: Checklist) => {
-    setIsLoading(true);
-    await apiService.startTrip(trip, checklist);
-    setActiveTrips(prev => [...prev, trip]);
-    setChecklists(prev => [...prev, checklist]);
-    setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.IN_USE, lastChecklist: checklist } : v));
-    setIsLoading(false);
-  };
-
-  const endTrip = async (tripId: string, currentKm: number, endTime: string, expenses: any) => {
-    setIsLoading(true);
-    await apiService.endTrip(tripId, currentKm, endTime, expenses);
-    const trip = activeTrips.find(t => t.id === tripId);
-    if (trip) {
-      const finishedTrip: Trip = { 
-        ...trip, 
-        endTime, 
-        distance: currentKm - trip.startKm,
-        fuelExpense: expenses?.fuel || 0,
-        otherExpense: expenses?.other || 0,
-        expenseNotes: expenses?.notes || ''
-      };
-      setCompletedTrips(prev => [finishedTrip, ...prev]);
-      setActiveTrips(prev => prev.filter(t => t.id !== tripId));
-      setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm } : v));
+    try {
+      await apiService.updateDriver(currentUser.id, { password: newPass, passwordChanged: true });
+      const updated = { ...currentUser, passwordChanged: true };
+      setCurrentUser(updated);
+      setDrivers(prev => prev.map(d => d.id === currentUser.id ? updated : d));
+      sessionStorage.setItem('fleet_current_user', JSON.stringify(updated));
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const addDriver = async (d: Driver) => {
     setIsLoading(true);
-    await apiService.saveDriver(d);
-    setDrivers(prev => [...prev, d]);
-    setIsLoading(false);
+    try {
+      await apiService.saveDriver(d);
+      setDrivers(prev => [...prev, d]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const updateDriver = async (id: string, updates: Partial<Driver>) => {
     setIsLoading(true);
-    const all = await apiService.getDrivers();
-    const up = all.map(d => d.id === id ? { ...d, ...updates } : d);
-    const target = up.find(d => d.id === id);
-    if (target) await apiService.saveDriver(target);
-    setDrivers(up);
-    setIsLoading(false);
+    try {
+      await apiService.updateDriver(id, updates);
+      setDrivers(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+      if (currentUser?.id === id) {
+        const updated = { ...currentUser, ...updates };
+        setCurrentUser(updated);
+        sessionStorage.setItem('fleet_current_user', JSON.stringify(updated));
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const deleteDriver = async (id: string) => {
     setIsLoading(true);
-    await apiService.deleteDriver(id);
-    setDrivers(prev => prev.filter(d => d.id !== id));
-    setIsLoading(false);
+    try {
+      await apiService.deleteDriver(id);
+      setDrivers(prev => prev.filter(d => d.id !== id));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const addVehicle = async (v: Vehicle) => {
     setIsLoading(true);
-    await apiService.saveVehicle(v);
-    setVehicles(prev => [...prev, v]);
-    setIsLoading(false);
+    try {
+      await apiService.saveVehicle(v);
+      setVehicles(prev => [...prev, v]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const updateVehicle = async (id: string, updates: Partial<Vehicle>) => {
     setIsLoading(true);
-    await apiService.updateVehicle(id, updates);
-    setVehicles(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
-    setIsLoading(false);
+    try {
+      await apiService.updateVehicle(id, updates);
+      setVehicles(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const startTrip = async (trip: Trip, checklist: Checklist) => {
+    setIsLoading(true);
+    try {
+      await apiService.startTrip(trip, checklist);
+      setActiveTrips(prev => [...prev, trip]);
+      setChecklists(prev => [...prev, checklist]);
+      setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.IN_USE, lastChecklist: checklist } : v));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const endTrip = async (tripId: string, currentKm: number, endTime: string, expenses: any) => {
+    setIsLoading(true);
+    try {
+      await apiService.endTrip(tripId, currentKm, endTime, expenses);
+      const trip = activeTrips.find(t => t.id === tripId);
+      if (trip) {
+        const finishedTrip: Trip = { 
+          ...trip, 
+          endTime, 
+          distance: currentKm - trip.startKm,
+          fuelExpense: expenses?.fuel || 0,
+          otherExpense: expenses?.other || 0,
+          expenseNotes: expenses?.notes || ''
+        };
+        setCompletedTrips(prev => [finishedTrip, ...prev]);
+        setActiveTrips(prev => prev.filter(t => t.id !== tripId));
+        setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm } : v));
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const addScheduledTrip = async (t: ScheduledTrip) => {
     setIsLoading(true);
-    await apiService.saveScheduledTrip(t);
-    setScheduledTrips(prev => [t, ...prev]);
-    setIsLoading(false);
+    try {
+      await apiService.saveScheduledTrip(t);
+      setScheduledTrips(prev => [t, ...prev]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const updateScheduledTrip = async (id: string, updates: Partial<ScheduledTrip>) => {
     setIsLoading(true);
-    await apiService.updateScheduledTrip(id, updates);
-    setScheduledTrips(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-    setIsLoading(false);
+    try {
+      await apiService.updateScheduledTrip(id, updates);
+      setScheduledTrips(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const deleteScheduledTrip = useCallback(async (id: string) => {
@@ -226,15 +255,21 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const cancelTrip = async (id: string) => {
-    const trip = activeTrips.find(t => t.id === id);
-    if (trip) {
-      await apiService.updateVehicle(trip.vehicleId, { status: VehicleStatus.AVAILABLE });
-      setActiveTrips(prev => prev.filter(t => t.id !== id));
-      setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE } : v));
+    setIsLoading(true);
+    try {
+      const trip = activeTrips.find(t => t.id === id);
+      if (trip) {
+        await apiService.updateVehicle(trip.vehicleId, { status: VehicleStatus.AVAILABLE });
+        setActiveTrips(prev => prev.filter(t => t.id !== id));
+        setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE } : v));
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const updateTrip = async (id: string, updates: Partial<Trip>) => {
+    // Para simplificar, assumindo atualização local e depois sincronização se necessário
     setActiveTrips(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
 
@@ -270,15 +305,23 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateMaintenanceRecord = async (id: string, updates: Partial<MaintenanceRecord>) => {
     setIsLoading(true);
-    await apiService.updateMaintenanceRecord(id, updates);
-    setMaintenanceRecords(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
-    setIsLoading(false);
+    try {
+      await apiService.updateMaintenanceRecord(id, updates);
+      setMaintenanceRecords(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const resolveMaintenance = async (vId: string, rId: string, km: number, date: string, cost?: number) => {
-    await apiService.resolveMaintenance(vId, rId, km, date, cost);
-    setMaintenanceRecords(prev => prev.map(r => r.id === rId ? { ...r, returnDate: date, cost: cost ?? r.cost } : r));
-    setVehicles(prev => prev.map(v => v.id === vId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm: km } : v));
+    setIsLoading(true);
+    try {
+      await apiService.resolveMaintenance(vId, rId, km, date, cost);
+      setMaintenanceRecords(prev => prev.map(r => r.id === rId ? { ...r, returnDate: date, cost: cost ?? r.cost } : r));
+      setVehicles(prev => prev.map(v => v.id === vId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm: km } : v));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const markNotificationAsRead = async (id: string) => {
@@ -287,9 +330,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetDatabase = useCallback(() => {
-    // Em modo Cloud, o resetDatabase deveria limpar o banco no servidor. 
-    // Por segurança, vamos apenas avisar.
-    alert("Para resetar o banco de dados em produção, utilize o phpMyAdmin.");
+    alert("Para resetar o banco de dados em produção, utilize o painel de controle do seu servidor MySQL.");
   }, []);
 
   const contextValue = useMemo(() => ({

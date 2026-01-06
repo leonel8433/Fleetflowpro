@@ -2,44 +2,46 @@
 import { Driver, Vehicle, Trip, Checklist, ScheduledTrip, VehicleStatus, MaintenanceRecord, Fine, AppNotification } from '../types';
 
 /**
- * IMPORTANTE: Para sincronizar entre dispositivos, você deve hospedar uma API
- * no seu servidor (Hostinger). Altere a BASE_URL para o seu domínio.
+ * BASE_URL configurada para o domínio de produção.
+ * O sistema detecta automaticamente se está em ambiente local ou produção.
  */
 const BASE_URL = window.location.origin.includes('localhost') 
   ? 'http://localhost:3000/api' 
-  : '/api'; 
+  : 'https://fleetflowpro.net.br/api'; 
 
 const headers = {
   'Content-Type': 'application/json',
 };
 
 async function handleResponse(response: Response) {
+  const contentType = response.headers.get("content-type");
+  
   if (!response.ok) {
-    let errorMessage = `Erro ${response.status}: `;
-    try {
+    let errorMessage = `Erro ${response.status}`;
+    
+    // Evita erro de parse caso o servidor retorne HTML em vez de JSON (comum em erros 404/500 no Hostinger)
+    if (contentType && contentType.indexOf("application/json") !== -1) {
       const errorData = await response.json();
-      errorMessage += errorData.message || response.statusText;
-    } catch (e) {
-      errorMessage += "Não foi possível conectar ao banco de dados. Verifique o backend.";
+      errorMessage += `: ${errorData.message || response.statusText}`;
+    } else {
+      errorMessage += `: O servidor retornou uma resposta inválida. Verifique a conectividade da API em ${BASE_URL}`;
     }
     throw new Error(errorMessage);
   }
+
+  if (response.status === 204) return null;
+  
   return response.json();
 }
 
 export const apiService = {
   // --- AUTH ---
   async login(username: string, pass: string): Promise<Driver | null> {
-    try {
-      return await fetch(`${BASE_URL}/login`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ username, pass })
-      }).then(handleResponse);
-    } catch (error) {
-      console.error("Login error:", error);
-      throw error;
-    }
+    return fetch(`${BASE_URL}/login`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ username, pass })
+    }).then(handleResponse);
   },
 
   // --- DRIVERS ---
@@ -52,6 +54,14 @@ export const apiService = {
       method: 'POST',
       headers,
       body: JSON.stringify(driver)
+    }).then(handleResponse);
+  },
+
+  async updateDriver(id: string, updates: Partial<Driver>): Promise<void> {
+    return fetch(`${BASE_URL}/drivers/${id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(updates)
     }).then(handleResponse);
   },
 
