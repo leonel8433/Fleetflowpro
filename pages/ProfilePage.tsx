@@ -16,7 +16,15 @@ const ProfilePage: React.FC = () => {
     setSuccess(false);
 
     // Validação de segurança básica
-    if (currentPassword !== currentUser?.password) {
+    // Se currentUser.password não estiver presente, e for o admin, permite 'admin' como padrão
+    const storedPassword = currentUser?.password;
+    const isAdmin = currentUser?.username === 'admin';
+    
+    const isValidCurrent = storedPassword 
+      ? currentPassword === storedPassword 
+      : (isAdmin && currentPassword === 'admin');
+
+    if (!isValidCurrent) {
       setError('A senha atual informada está incorreta.');
       return;
     }

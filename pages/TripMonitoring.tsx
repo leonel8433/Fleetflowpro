@@ -56,6 +56,8 @@ const SimulatedProgress: React.FC<{ startTime: string }> = ({ startTime }) => {
 const TripMonitoring: React.FC = () => {
   const { activeTrips, vehicles, drivers, updateTrip, endTrip, cancelTrip } = useFleet();
   const [finishingTripId, setFinishingTripId] = useState<string | null>(null);
+  const [cancellingTripId, setCancellingTripId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   const [endKm, setEndKm] = useState<number>(0);
   const [fuelExpense, setFuelExpense] = useState<number>(0);
   const [otherExpense, setOtherExpense] = useState<number>(0);
@@ -105,6 +107,18 @@ const TripMonitoring: React.FC = () => {
       setFinishingTripId(null);
       alert('Operação encerrada!');
     }
+  };
+
+  const handleConfirmRemoteCancel = () => {
+    if (!cancellingTripId || !cancelReason.trim()) {
+      alert("O motivo do cancelamento é obrigatório para fins de auditoria.");
+      return;
+    }
+
+    cancelTrip(cancellingTripId, cancelReason.trim());
+    setCancellingTripId(null);
+    setCancelReason('');
+    alert('Operação cancelada remotamente. O evento foi registrado no log de auditoria.');
   };
 
   return (
@@ -205,7 +219,7 @@ const TripMonitoring: React.FC = () => {
                       Encerrar
                     </button>
                     <button 
-                      onClick={() => { if(window.confirm('CANCELA?')) cancelTrip(trip.id); }}
+                      onClick={() => setCancellingTripId(trip.id)}
                       className="flex-1 py-5 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl font-write text-sm uppercase transition-all border border-red-600/20 flex items-center justify-center shadow-lg"
                     >
                       <i className="fas fa-ban"></i>
@@ -222,6 +236,40 @@ const TripMonitoring: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal de Cancelamento Remoto (Admin) */}
+      {cancellingTripId && (
+        <div className="fixed inset-0 z-[260] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-lg animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 space-y-6 animate-in zoom-in-95 duration-300">
+            <div className="text-center">
+               <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center text-2xl mx-auto mb-4">
+                 <i className="fas fa-user-shield"></i>
+               </div>
+               <h3 className="text-xl font-write uppercase text-slate-800 tracking-tight">Interrupção Remota</h3>
+               <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">O motivo do cancelamento é mandatório para o registro de auditoria.</p>
+            </div>
+            <div className="bg-slate-50 p-6 rounded-3xl border border-red-100">
+               <textarea 
+                 autoFocus
+                 value={cancelReason} 
+                 onChange={(e) => setCancelReason(e.target.value)} 
+                 className="w-full bg-transparent outline-none font-write text-sm text-slate-950 min-h-[100px]" 
+                 placeholder="Descreva o motivo administrativo do cancelamento..." 
+               />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { setCancellingTripId(null); setCancelReason(''); }} className="flex-1 py-5 text-slate-400 font-write uppercase text-[10px] tracking-widest font-bold">Voltar</button>
+              <button 
+                onClick={handleConfirmRemoteCancel} 
+                disabled={!cancelReason.trim()}
+                className="flex-[2] py-5 bg-red-600 text-white rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl shadow-red-100 transition-all disabled:opacity-20"
+              >
+                Confirmar Interrupção
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Finalizar Remoto */}
       {finishingTripId && (

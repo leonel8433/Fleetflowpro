@@ -84,19 +84,33 @@ export const apiService = {
         headers,
         body: JSON.stringify({ username, pass })
       });
-      return await handleResponse(response);
+      const user = await handleResponse(response);
+      if (user) {
+        return { ...user, password: pass };
+      }
+      return user;
     } catch (error: any) {
-      // Emergency fallback for admin if API is down
-      if (username === 'admin' && pass === 'admin' && (error.message.includes('Failed to fetch') || error.message.includes('Resposta inesperada'))) {
-        const mockAdmin: Driver = {
-          id: 'admin-id',
-          name: 'Administrador (Offline)',
-          username: 'admin',
-          license: '000000',
-          category: 'E',
-          passwordChanged: true
-        };
-        return mockAdmin;
+      // Fallback: Verificar primeiro se o admin atualizado existe no cache
+      if (username === 'admin') {
+        const cachedDrivers = storage.get<Driver[]>('drivers', []);
+        const cachedAdmin = cachedDrivers.find(d => d.username === 'admin');
+        
+        if (cachedAdmin && cachedAdmin.password === pass) {
+          return cachedAdmin;
+        }
+
+        // Se não houver admin no cache ou senha não bater, tenta o padrão hardcoded de emergência
+        if (pass === 'admin' && !cachedAdmin) {
+          return {
+            id: 'admin-id',
+            name: 'Administrador (Offline)',
+            username: 'admin',
+            password: 'admin',
+            license: '000000',
+            category: 'E',
+            passwordChanged: false // Força troca no primeiro acesso offline
+          };
+        }
       }
       throw error;
     }
@@ -115,7 +129,30 @@ export const apiService = {
 
   async updateDriver(id: string, updates: Partial<Driver>): Promise<void> {
     const current = storage.get<Driver[]>('drivers', []);
-    storage.set('drivers', current.map(d => d.id === id ? { ...d, ...updates } : d));
+    let found = false;
+    const next = current.map(d => {
+      if (d.id === id) {
+        found = true;
+        return { ...d, ...updates };
+      }
+      return d;
+    });
+
+    // Se for o admin e não estiver na lista de motoristas comum, injeta ele no cache
+    if (!found && updates.username === 'admin') {
+      const mockAdmin: Driver = {
+        id: id,
+        name: 'Administrador (Offline)',
+        username: 'admin',
+        license: '000000',
+        category: 'E',
+        ...updates
+      };
+      storage.set('drivers', [...current, mockAdmin]);
+    } else {
+      storage.set('drivers', next);
+    }
+    
     return fetch(`${BASE_URL}/drivers/${id}`, { method: 'PATCH', headers, body: JSON.stringify(updates) }).then(r => handleResponse(r)).catch(e => console.warn('Sync failed, saved locally.'));
   },
 

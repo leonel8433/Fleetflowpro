@@ -3,6 +3,16 @@ import React, { useState, useMemo } from 'react';
 import { useFleet } from '../context/FleetContext';
 import { VehicleStatus, MaintenanceRecord, Vehicle } from '../types';
 
+// Opções de posições de pneus para o esquema gráfico
+const TIRE_POSITIONS = [
+  { id: 'FL', label: 'D. Esq', x: 'left-0', y: 'top-4' },
+  { id: 'FR', label: 'D. Dir', x: 'right-0', y: 'top-4' },
+  { id: 'ML', label: 'T. Esq (1)', x: 'left-0', y: 'top-24' },
+  { id: 'MR', label: 'T. Dir (1)', x: 'right-0', y: 'top-24' },
+  { id: 'RL', label: 'T. Esq (2)', x: 'left-0', y: 'top-40' },
+  { id: 'RR', label: 'T. Dir (2)', x: 'right-0', y: 'top-40' },
+];
+
 const FleetManager: React.FC = () => {
   const { vehicles, maintenanceRecords, checklists, addMaintenanceRecord, updateMaintenanceRecord, resolveMaintenance, addVehicle, updateVehicle, resetDatabase } = useFleet();
   const [showMaintenanceForm, setShowMaintenanceForm] = useState(false);
@@ -15,13 +25,11 @@ const FleetManager: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Modal para finalizar manutenção
   const [resolvingMaintenance, setResolvingMaintenance] = useState<{recordId: string | null, vehicleId: string} | null>(null);
   const [resolveKm, setResolveKm] = useState<number>(0);
   const [resolveCost, setResolveCost] = useState<string>('');
   const [resolveDate, setResolveDate] = useState(new Date().toISOString().slice(0, 16));
 
-  // Estado para edição de registro histórico
   const [editingRecord, setEditingRecord] = useState<MaintenanceRecord | null>(null);
 
   const [newRecord, setNewRecord] = useState({
@@ -34,7 +42,8 @@ const FleetManager: React.FC = () => {
     notes: '',
     isTireChange: false,
     tireBrand: '',
-    tireModel: ''
+    tireModel: '',
+    selectedTires: [] as string[]
   });
 
   const [newVehicle, setNewVehicle] = useState({
@@ -46,6 +55,15 @@ const FleetManager: React.FC = () => {
     fuelLevel: '100',
     fuelType: 'Diesel' as Vehicle['fuelType']
   });
+
+  const toggleTireSelection = (id: string) => {
+    setNewRecord(prev => ({
+      ...prev,
+      selectedTires: prev.selectedTires.includes(id) 
+        ? prev.selectedTires.filter(t => t !== id)
+        : [...prev.selectedTires, id]
+    }));
+  };
 
   const handleResetDatabase = () => {
     const confirm1 = window.confirm("ATENÇÃO: Isso apagará permanentemente todos os veículos, motoristas, viagens e histórico de manutenção. Deseja continuar?");
@@ -63,7 +81,8 @@ const FleetManager: React.FC = () => {
       vehicleId: vehicle.id,
       km: vehicle.currentKm.toString(),
       isTireChange: false,
-      serviceType: ''
+      serviceType: '',
+      selectedTires: []
     });
     setFormError(null);
     setShowMaintenanceForm(true);
@@ -92,12 +111,17 @@ const FleetManager: React.FC = () => {
       setFormError("A quilometragem atual deve ser um número válido.");
       return;
     }
+    if (newRecord.isTireChange && newRecord.selectedTires.length === 0) {
+      setFormError("Por favor, selecione ao menos um pneu no esquema gráfico.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       let finalNotes = newRecord.notes.trim();
       if (newRecord.isTireChange) {
-        const tireDetails = `Pneus: ${newRecord.tireBrand || 'N/A'} ${newRecord.tireModel || 'N/A'}`;
+        const tirePosLabels = TIRE_POSITIONS.filter(p => newRecord.selectedTires.includes(p.id)).map(p => p.label).join(', ');
+        const tireDetails = `Pneus: ${newRecord.tireBrand || 'N/A'} ${newRecord.tireModel || 'N/A'} [Posições: ${tirePosLabels}]`;
         finalNotes = finalNotes ? `${tireDetails} | ${finalNotes}` : tireDetails;
       }
 
@@ -124,7 +148,8 @@ const FleetManager: React.FC = () => {
         notes: '', 
         isTireChange: false, 
         tireBrand: '', 
-        tireModel: '' 
+        tireModel: '',
+        selectedTires: []
       });
       setShowMaintenanceForm(false);
       alert('Manutenção registrada com sucesso!');
@@ -145,7 +170,6 @@ const FleetManager: React.FC = () => {
     }
 
     const normalizedPlate = newVehicle.plate.toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
-    
     const plateExists = vehicles.some(v => 
       v.plate.toUpperCase().replace(/[^A-Z0-9]/g, '').trim() === normalizedPlate && v.id !== editingVehicleId
     );
@@ -256,11 +280,17 @@ const FleetManager: React.FC = () => {
   });
 
   const getTireDetails = (notes: string) => {
-    if (!notes || !notes.startsWith('Pneus:')) return { brand: 'N/A', model: 'N/A' };
-    const parts = notes.split('|')[0].replace('Pneus:', '').trim().split(' ');
+    if (!notes || !notes.startsWith('Pneus:')) return { brand: 'N/A', model: 'N/A', positions: [] as string[] };
+    const mainParts = notes.split('|')[0].replace('Pneus:', '').trim();
+    const posMatch = mainParts.match(/\[Posições: (.*?)\]/);
+    const positions = posMatch ? posMatch[1].split(', ') : [];
+    const brandModelPart = mainParts.replace(/\[Posições: .*?\]/, '').trim();
+    const parts = brandModelPart.split(' ');
+    
     return {
       brand: parts[0] || 'N/A',
-      model: parts.slice(1).join(' ') || 'N/A'
+      model: parts.slice(1).join(' ') || 'N/A',
+      positions
     };
   };
 
@@ -289,66 +319,22 @@ const FleetManager: React.FC = () => {
             <h3 className="text-sm font-write text-slate-800 uppercase tracking-widest">
               {editingVehicleId ? 'Edição de Veículo' : 'Inclusão de Ativo na Frota'}
             </h3>
-            {editingVehicleId && <span className="text-[10px] bg-blue-100 text-blue-600 px-3 py-1 rounded-full font-bold uppercase">ID: {editingVehicleId}</span>}
           </div>
-
           {formError && (
-            <div className="mb-8 p-5 bg-red-50 border border-red-100 rounded-3xl flex items-center gap-4 animate-in slide-in-from-left-2">
-              <div className="w-10 h-10 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center shrink-0">
-                <i className="fas fa-triangle-exclamation"></i>
-              </div>
-              <p className="text-xs font-bold text-red-800 uppercase tracking-tight leading-relaxed">{formError}</p>
+            <div className="mb-8 p-5 bg-red-50 border border-red-100 rounded-3xl flex items-center gap-4">
+              <i className="fas fa-triangle-exclamation text-red-600"></i>
+              <p className="text-xs font-bold text-red-800 uppercase">{formError}</p>
             </div>
           )}
-
           <form onSubmit={handleSubmitVehicle} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="relative">
-              <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Placa Identificadora</label>
-              <div className="relative">
-                <i className={`fas fa-id-card absolute left-4 top-1/2 -translate-y-1/2 ${formError?.includes('PLACA') ? 'text-red-400' : 'text-slate-300'}`}></i>
-                <input 
-                  required 
-                  placeholder="ABC-1234" 
-                  value={newVehicle.plate} 
-                  onChange={(e) => { 
-                    setNewVehicle({ ...newVehicle, plate: e.target.value.toUpperCase() });
-                    if(formError) setFormError(null);
-                  }} 
-                  className={`w-full p-4 pl-12 bg-slate-50 border rounded-2xl text-slate-950 font-bold focus:ring-2 outline-none transition-all ${formError?.includes('PLACA') ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:ring-blue-500'}`} 
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Marca / Fabricante</label>
-              <input required placeholder="Ex: Scania, Volvo..." value={newVehicle.brand} onChange={(e) => setNewVehicle({ ...newVehicle, brand: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Modelo</label>
-              <input required placeholder="Ex: R450 6x2" value={newVehicle.model} onChange={(e) => setNewVehicle({ ...newVehicle, model: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Ano de Fabricação</label>
-              <input required type="number" placeholder="2024" value={newVehicle.year} onChange={(e) => setNewVehicle({ ...newVehicle, year: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Odômetro Atual (KM)</label>
-              <input required type="number" placeholder="0" value={newVehicle.currentKm} onChange={(e) => setNewVehicle({ ...newVehicle, currentKm: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Matriz Energética</label>
-              <select required value={newVehicle.fuelType} onChange={(e) => setNewVehicle({ ...newVehicle, fuelType: e.target.value as Vehicle['fuelType'] })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none">
-                <option value="Diesel">Diesel</option>
-                <option value="Gasolina">Gasolina</option>
-                <option value="Flex">Flex</option>
-                <option value="Elétrico">Elétrico</option>
-                <option value="GNV">GNV</option>
-              </select>
-            </div>
-            <div className="md:col-span-2 lg:col-span-3 pt-6 flex justify-end gap-3">
-              <button type="button" onClick={() => { setShowVehicleForm(false); setEditingVehicleId(null); setFormError(null); }} className="px-8 py-5 text-slate-400 font-write uppercase text-[10px] tracking-widest">Descartar</button>
-              <button type="submit" disabled={isSubmitting} className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl hover:bg-blue-900 transition-all active:scale-95 disabled:opacity-50">
-                {isSubmitting ? 'Processando...' : (editingVehicleId ? 'Salvar Alterações' : 'Finalizar Cadastro')}
-              </button>
+            <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Placa Identificadora</label><input required placeholder="ABC-1234" value={newVehicle.plate} onChange={(e) => setNewVehicle({ ...newVehicle, plate: e.target.value.toUpperCase() })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+            <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Marca</label><input required placeholder="Ex: Volvo" value={newVehicle.brand} onChange={(e) => setNewVehicle({ ...newVehicle, brand: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+            <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Modelo</label><input required placeholder="Ex: FH 540" value={newVehicle.model} onChange={(e) => setNewVehicle({ ...newVehicle, model: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+            <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Ano</label><input required type="number" value={newVehicle.year} onChange={(e) => setNewVehicle({ ...newVehicle, year: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+            <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">KM Atual</label><input required type="number" value={newVehicle.currentKm} onChange={(e) => setNewVehicle({ ...newVehicle, currentKm: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+            <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Combustível</label><select value={newVehicle.fuelType} onChange={(e) => setNewVehicle({ ...newVehicle, fuelType: e.target.value as any })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold outline-none"><option value="Diesel">Diesel</option><option value="Gasolina">Gasolina</option><option value="Flex">Flex</option></select></div>
+            <div className="md:col-span-3 flex justify-end gap-3 mt-4">
+              <button type="submit" className="bg-slate-900 text-white px-12 py-4 rounded-2xl font-write uppercase text-xs shadow-xl">{editingVehicleId ? 'Salvar' : 'Cadastrar'}</button>
             </div>
           </form>
         </div>
@@ -357,37 +343,68 @@ const FleetManager: React.FC = () => {
       {showMaintenanceForm && (
         <div className={`bg-white p-8 rounded-[2.5rem] shadow-xl border animate-in fade-in slide-in-from-top-4 duration-300 ${formError ? 'border-red-200' : 'border-slate-100'}`}>
           <h3 className="text-sm font-write text-slate-800 uppercase tracking-widest mb-8">Abertura de Ordem Técnica</h3>
-          
           {formError && (
             <div className="mb-8 p-5 bg-red-50 border border-red-100 rounded-3xl flex items-center gap-4">
               <i className="fas fa-exclamation-circle text-red-500"></i>
-              <p className="text-xs font-bold text-red-800 uppercase tracking-tight leading-relaxed">{formError}</p>
+              <p className="text-xs font-bold text-red-800 uppercase">{formError}</p>
             </div>
           )}
-
-          <form onSubmit={handleSubmitMaintenance} className="space-y-6">
+          <form onSubmit={handleSubmitMaintenance} className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Veículo Destinado</label><select required value={newRecord.vehicleId} onChange={(e) => setNewRecord({ ...newRecord, vehicleId: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none"><option value="">Selecione...</option>{vehicles.filter(v => v.status === VehicleStatus.AVAILABLE || v.id === newRecord.vehicleId).map(v => (<option key={v.id} value={v.id}>{v.plate} - {v.model}</option>))}</select></div>
-              <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Tipo de Serviço</label>{!newRecord.isTireChange ? (<input required={!newRecord.isTireChange} type="text" placeholder="Ex: Revisão de Motor" value={newRecord.serviceType} onChange={(e) => setNewRecord({ ...newRecord, serviceType: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" />) : (<div className="w-full p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-emerald-600 font-bold text-xs flex items-center gap-2"><i className="fas fa-circle-check"></i> Troca de Pneus</div>)}</div>
-              <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Recurso Específico</label><button type="button" onClick={() => setNewRecord(prev => ({ ...prev, isTireChange: !prev.isTireChange, serviceType: !prev.isTireChange ? 'Troca de Pneus' : '' }))} className={`w-full p-4 border rounded-2xl font-bold text-[10px] uppercase transition-all flex items-center justify-center gap-2 ${newRecord.isTireChange ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400 hover:border-emerald-200'}`}><i className="fas fa-car-rear"></i> {newRecord.isTireChange ? 'Recurso Ativo' : 'Troca de Pneus'}</button></div>
-              <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Data de Entrada</label><input required type="date" value={newRecord.date} onChange={(e) => setNewRecord({ ...newRecord, date: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+              <div className="lg:col-span-2"><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Veículo</label><select required value={newRecord.vehicleId} onChange={(e) => setNewRecord({ ...newRecord, vehicleId: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold outline-none"><option value="">Selecione...</option>{vehicles.map(v => (<option key={v.id} value={v.id}>{v.plate} - {v.model}</option>))}</select></div>
+              <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Tipo</label><button type="button" onClick={() => setNewRecord(prev => ({ ...prev, isTireChange: !prev.isTireChange, serviceType: !prev.isTireChange ? 'Troca de Pneus' : '' }))} className={`w-full p-4 border rounded-2xl font-bold text-[10px] uppercase transition-all flex items-center justify-center gap-2 ${newRecord.isTireChange ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400 hover:border-emerald-200'}`}><i className="fas fa-car-rear"></i> {newRecord.isTireChange ? 'Troca de Pneus' : 'Outro Serviço'}</button></div>
+              <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Data Entrada</label><input required type="date" value={newRecord.date} onChange={(e) => setNewRecord({ ...newRecord, date: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold outline-none" /></div>
             </div>
+
             {newRecord.isTireChange && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100 animate-in slide-in-from-left-4 duration-300">
-                <div><label className="block text-[10px] font-write text-emerald-800 uppercase mb-2">Marca</label><input required={newRecord.isTireChange} placeholder="Ex: Michelin" value={newRecord.tireBrand} onChange={(e) => setNewRecord({ ...newRecord, tireBrand: e.target.value })} className="w-full p-4 bg-white border border-emerald-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
-                <div><label className="block text-[10px] font-write text-emerald-800 uppercase mb-2">Modelo</label><input required={newRecord.isTireChange} placeholder="Ex: Primacy 4" value={newRecord.tireModel} onChange={(e) => setNewRecord({ ...newRecord, tireModel: e.target.value })} className="w-full p-4 bg-white border border-emerald-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 bg-emerald-50/50 p-8 rounded-[2.5rem] border border-emerald-100 animate-in zoom-in-95">
+                <div className="space-y-6">
+                  <h4 className="text-[10px] font-write text-emerald-800 uppercase tracking-widest flex items-center gap-2"><i className="fas fa-info-circle"></i> Detalhes do Pneu</h4>
+                  <div><label className="block text-[9px] font-write text-emerald-700 uppercase mb-2">Marca</label><input required placeholder="Ex: Pirelli" value={newRecord.tireBrand} onChange={(e) => setNewRecord({ ...newRecord, tireBrand: e.target.value })} className="w-full p-4 bg-white border border-emerald-100 rounded-2xl text-slate-950 font-bold outline-none focus:ring-2 focus:ring-emerald-500" /></div>
+                  <div><label className="block text-[9px] font-write text-emerald-700 uppercase mb-2">Modelo</label><input required placeholder="Ex: Scorpion" value={newRecord.tireModel} onChange={(e) => setNewRecord({ ...newRecord, tireModel: e.target.value })} className="w-full p-4 bg-white border border-emerald-100 rounded-2xl text-slate-950 font-bold outline-none focus:ring-2 focus:ring-emerald-500" /></div>
+                </div>
+                
+                <div className="flex flex-col items-center">
+                  <h4 className="text-[10px] font-write text-emerald-800 uppercase tracking-widest mb-6"><i className="fas fa-draw-polygon"></i> Seleção Visual de Pneus</h4>
+                  <div className="relative w-40 h-64 bg-slate-200 rounded-[2rem] border-4 border-slate-300 shadow-inner">
+                    {TIRE_POSITIONS.map(pos => (
+                      <button
+                        key={pos.id}
+                        type="button"
+                        onClick={() => toggleTireSelection(pos.id)}
+                        className={`absolute w-10 h-14 rounded-lg border-2 transition-all flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 left-auto ${
+                          pos.x === 'left-0' ? 'left-0 -ml-4' : 'right-0 -mr-4'
+                        } ${pos.y} ${
+                          newRecord.selectedTires.includes(pos.id) 
+                          ? 'bg-emerald-500 border-emerald-200 text-white shadow-lg scale-110' 
+                          : 'bg-slate-700 border-slate-800 text-slate-500 hover:bg-slate-600'
+                        }`}
+                        title={pos.label}
+                      >
+                        <i className="fas fa-circle text-[6px]"></i>
+                      </button>
+                    ))}
+                    <div className="absolute inset-x-6 top-10 bottom-10 border-2 border-dashed border-slate-300 rounded-xl opacity-20"></div>
+                  </div>
+                  <div className="mt-8 flex flex-wrap justify-center gap-2">
+                    {newRecord.selectedTires.map(tid => (
+                      <span key={tid} className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[9px] font-bold uppercase">
+                        {TIRE_POSITIONS.find(p => p.id === tid)?.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Odômetro de Entrada</label><input required type="number" value={newRecord.km} onChange={(e) => setNewRecord({ ...newRecord, km: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Prev. Retorno</label><input type="date" value={newRecord.returnDate} onChange={(e) => setNewRecord({ ...newRecord, returnDate: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Orçamento Est. (R$)</label><input type="number" step="0.01" value={newRecord.cost} onChange={(e) => setNewRecord({ ...newRecord, cost: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div className="md:col-span-3"><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Diagnóstico Prévio / Observações</label><textarea value={newRecord.notes} onChange={(e) => setNewRecord({ ...newRecord, notes: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold focus:ring-2 focus:ring-blue-500 outline-none min-h-[100px]"></textarea></div>
-              <div className="md:col-span-3 flex justify-end">
-                <button type="submit" disabled={isSubmitting} className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-write uppercase text-xs tracking-widest hover:bg-slate-800 transition-all shadow-xl disabled:opacity-50">
-                  {isSubmitting ? 'Gravando...' : 'Confirmar Ordem de Serviço'}
-                </button>
-              </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+               <div className="lg:col-span-2"><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Serviço</label><input required placeholder="Ex: Troca de óleo" value={newRecord.serviceType} onChange={(e) => setNewRecord({ ...newRecord, serviceType: e.target.value })} disabled={newRecord.isTireChange} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none" /></div>
+               <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">KM</label><input required type="number" value={newRecord.km} onChange={(e) => setNewRecord({ ...newRecord, km: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none" /></div>
+               <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Custo Est.</label><input type="number" step="0.01" value={newRecord.cost} onChange={(e) => setNewRecord({ ...newRecord, cost: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none" /></div>
+            </div>
+            
+            <div className="flex justify-end pt-4">
+               <button type="submit" className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-write uppercase text-xs shadow-xl active:scale-95 transition-all">Abrir Ordem de Serviço</button>
             </div>
           </form>
         </div>
@@ -397,28 +414,16 @@ const FleetManager: React.FC = () => {
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
             <div className="p-8 bg-slate-800 text-white text-center">
-              <h3 className="text-xl font-write uppercase tracking-tight">
-                {resolvingMaintenance.recordId ? 'Fechamento de OS' : 'Liberação Emergencial'}
-              </h3>
+              <h3 className="text-xl font-write uppercase tracking-tight">Fechamento de OS</h3>
             </div>
             <form onSubmit={handleResolveMaintenance} className="p-10 space-y-6">
               <div>
                 <label className="block text-[10px] font-write text-slate-400 uppercase mb-4 text-center tracking-widest font-bold">Odômetro de Saída</label>
                 <input type="number" required value={resolveKm} onChange={(e) => setResolveKm(parseInt(e.target.value))} className="w-full p-5 bg-slate-50 border border-slate-200 rounded-3xl focus:ring-4 focus:ring-blue-100 outline-none font-write text-3xl text-slate-800 text-center shadow-inner" />
               </div>
-              
-              {resolvingMaintenance.recordId && (
-                <div>
-                  <label className="block text-[10px] font-write text-slate-400 uppercase mb-2 text-center tracking-widest font-bold">Custo Final da OS (R$)</label>
-                  <input type="number" step="0.01" value={resolveCost} onChange={(e) => setResolveCost(e.target.value)} className="w-full p-4 bg-emerald-50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-800 text-center text-lg" />
-                </div>
-              )}
-
               <div className="flex gap-4 pt-4">
                 <button type="button" onClick={() => setResolvingMaintenance(null)} className="flex-1 py-5 text-slate-400 font-write uppercase text-[10px] tracking-widest">Voltar</button>
-                <button type="submit" disabled={isSubmitting} className="flex-[2] py-5 bg-emerald-600 text-white rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl shadow-emerald-100 disabled:opacity-50 transition-all active:scale-95">
-                  {isSubmitting ? 'Processando...' : 'Liberar Veículo'}
-                </button>
+                <button type="submit" disabled={isSubmitting} className="flex-[2] py-5 bg-emerald-600 text-white rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl shadow-emerald-100 disabled:opacity-50 transition-all active:scale-95">Liberar Veículo</button>
               </div>
             </form>
           </div>
@@ -442,27 +447,13 @@ const FleetManager: React.FC = () => {
                   <input type="date" required value={editingRecord.date} onChange={(e) => setEditingRecord({...editingRecord, date: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold outline-none" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Retorno</label>
-                  <input type="date" value={editingRecord.returnDate || ''} onChange={(e) => setEditingRecord({...editingRecord, returnDate: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold outline-none" />
-                </div>
-                <div>
                   <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Valor Pago (R$)</label>
                   <input type="number" step="0.01" value={editingRecord.cost} onChange={(e) => setEditingRecord({...editingRecord, cost: parseFloat(e.target.value) || 0})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold outline-none" />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Odômetro (KM)</label>
-                  <input type="number" value={editingRecord.km} onChange={(e) => setEditingRecord({...editingRecord, km: parseInt(e.target.value) || 0})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold outline-none" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Notas Técnicas</label>
-                <textarea value={editingRecord.notes} onChange={(e) => setEditingRecord({...editingRecord, notes: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-950 font-bold outline-none min-h-[80px]"></textarea>
               </div>
               <div className="flex gap-4 pt-4">
                 <button type="button" onClick={() => setEditingRecord(null)} className="flex-1 py-5 text-slate-400 font-write uppercase text-[10px] tracking-widest">Cancelar</button>
-                <button type="submit" disabled={isSubmitting} className="flex-[2] py-5 bg-blue-600 text-white rounded-2xl font-write uppercase text-xs shadow-xl shadow-blue-100 disabled:opacity-50">
-                  {isSubmitting ? 'Salvando...' : 'Atualizar Histórico'}
-                </button>
+                <button type="submit" className="flex-[2] py-5 bg-blue-600 text-white rounded-2xl font-write uppercase text-xs shadow-xl">Atualizar Histórico</button>
               </div>
             </form>
           </div>
@@ -472,9 +463,9 @@ const FleetManager: React.FC = () => {
       <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
         <div className="flex-1 relative">
           <i className="fas fa-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
-          <input type="text" placeholder="Filtrar por placa ou modelo..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold text-slate-950 focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+          <input type="text" placeholder="Filtrar placa ou modelo..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold text-slate-950 focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-write text-slate-700 uppercase outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-write text-slate-700 uppercase outline-none cursor-pointer transition-all">
           <option value="ALL">Status: Todos</option>
           <option value={VehicleStatus.AVAILABLE}>Status: Livres</option>
           <option value={VehicleStatus.IN_USE}>Status: Operando</option>
@@ -523,75 +514,74 @@ const FleetManager: React.FC = () => {
                 </div>
 
                 <div className="mt-8 flex gap-2 border-t border-slate-50 pt-8">
-                  <button 
-                    onClick={() => handleEditVehicle(vehicle)}
-                    className="flex-1 bg-slate-50 text-slate-600 py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest border border-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-100 transition-all flex items-center justify-center gap-2"
-                  >
-                    <i className="fas fa-edit"></i>
-                  </button>
-                  
-                  <button 
-                    onClick={() => setExpandedTiresId(isTiresExpanded ? null : vehicle.id)}
-                    className={`flex-1 py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest border transition-all flex items-center justify-center gap-2 ${isTiresExpanded ? 'bg-blue-900 text-white border-blue-900 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-blue-50 hover:text-blue-600'}`}
-                  >
-                    <i className="fas fa-car-rear"></i> Pneus
-                  </button>
-
-                  {vehicle.status === VehicleStatus.MAINTENANCE && (
-                    <button 
-                      onClick={() => { 
-                        setResolvingMaintenance({
-                          recordId: activeMaintenance?.id || null, 
-                          vehicleId: vehicle.id
-                        }); 
-                        setResolveKm(vehicle.currentKm); 
-                      }}
-                      className="flex-1 bg-red-600 text-white py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest shadow-lg shadow-red-100 hover:bg-red-700 transition-all flex items-center justify-center gap-2"
-                    >
-                      <i className="fas fa-check-double"></i> Liberar
-                    </button>
-                  )}
-                  
-                  <button 
-                    onClick={() => setExpandedVehicleId(isExpanded ? null : vehicle.id)}
-                    className={`flex-1 py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest border transition-all flex items-center justify-center gap-2 ${isExpanded ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100'}`}
-                  >
-                    <i className={`fas ${isExpanded ? 'fa-chevron-up' : 'fa-list-ul'}`}></i> Ver Tudo
-                  </button>
+                  <button onClick={() => handleEditVehicle(vehicle)} className="flex-1 bg-slate-50 text-slate-600 py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest border border-slate-100 hover:bg-blue-50 hover:text-blue-600 transition-all flex items-center justify-center gap-2"><i className="fas fa-edit"></i></button>
+                  <button onClick={() => setExpandedTiresId(isTiresExpanded ? null : vehicle.id)} className={`flex-1 py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest border transition-all flex items-center justify-center gap-2 ${isTiresExpanded ? 'bg-blue-900 text-white border-blue-900 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-blue-50 hover:text-blue-600'}`}><i className="fas fa-car-rear"></i> Pneus</button>
+                  {vehicle.status === VehicleStatus.MAINTENANCE && (<button onClick={() => { setResolvingMaintenance({ recordId: activeMaintenance?.id || null, vehicleId: vehicle.id }); setResolveKm(vehicle.currentKm); }} className="flex-1 bg-red-600 text-white py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest shadow-lg shadow-red-100 hover:bg-red-700 transition-all flex items-center justify-center gap-2"><i className="fas fa-check-double"></i> Liberar</button>)}
+                  <button onClick={() => setExpandedVehicleId(isExpanded ? null : vehicle.id)} className={`flex-1 py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest border transition-all flex items-center justify-center gap-2 ${isExpanded ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100'}`}><i className={`fas ${isExpanded ? 'fa-chevron-up' : 'fa-list-ul'}`}></i> Ver Tudo</button>
                 </div>
               </div>
 
               {isTiresExpanded && (
                 <div className="px-8 pb-8 animate-in slide-in-from-top-4 duration-300">
-                  <div className="bg-slate-800 rounded-3xl p-6 text-white shadow-inner relative overflow-hidden group">
-                    <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-125 transition-transform">
-                      <i className="fas fa-truck-monster text-7xl"></i>
-                    </div>
+                  <div className="bg-slate-800 rounded-3xl p-8 text-white shadow-inner relative overflow-hidden group border border-slate-700">
+                    <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-125 transition-transform duration-700"><i className="fas fa-truck-monster text-[100px]"></i></div>
                     {lastTireChange ? (
-                      <div className="relative z-10 space-y-4">
-                        <div className="flex justify-between items-center">
-                          <h5 className="text-[10px] font-write text-blue-400 uppercase tracking-[0.2em]">Última Troca de Pneus</h5>
-                          <span className="text-[9px] font-bold text-slate-400">{new Date(lastTireChange.date).toLocaleDateString()}</span>
+                      <div className="relative z-10 flex flex-col md:flex-row gap-8">
+                        <div className="flex-1 space-y-6">
+                           <div className="flex justify-between items-center border-b border-slate-700 pb-2">
+                              <h5 className="text-[10px] font-write text-blue-400 uppercase tracking-widest">Estado Atual dos Pneus</h5>
+                              <span className="text-[9px] font-bold text-slate-500 uppercase">OS em {new Date(lastTireChange.date).toLocaleDateString()}</span>
+                           </div>
+                           <div className="grid grid-cols-2 gap-4">
+                              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-700">
+                                <p className="text-[8px] font-write text-slate-500 uppercase tracking-widest mb-1">Marca</p>
+                                <p className="text-xs font-bold">{tireInfo?.brand}</p>
+                              </div>
+                              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-700">
+                                <p className="text-[8px] font-write text-slate-500 uppercase tracking-widest mb-1">Modelo</p>
+                                <p className="text-xs font-bold">{tireInfo?.model}</p>
+                              </div>
+                           </div>
+                           <div className="bg-emerald-900/20 p-4 rounded-2xl border border-emerald-900/30">
+                              <p className="text-[8px] font-write text-emerald-500 uppercase tracking-widest mb-3">Posições Renovadas</p>
+                              <div className="flex flex-wrap gap-2">
+                                {tireInfo?.positions.map(p => (
+                                  <span key={p} className="bg-emerald-600 text-white px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest shadow-sm">
+                                    {p}
+                                  </span>
+                                ))}
+                              </div>
+                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-[8px] font-write text-slate-500 uppercase tracking-widest mb-1">Marca Registrada</p>
-                            <p className="text-sm font-bold">{tireInfo?.brand}</p>
+
+                        <div className="shrink-0 flex justify-center">
+                          <div className="relative w-32 h-52 bg-slate-900 rounded-[2rem] border-2 border-slate-700 overflow-hidden shadow-2xl">
+                             <div className="absolute inset-x-4 inset-y-8 border border-slate-800 rounded-xl opacity-30"></div>
+                             {TIRE_POSITIONS.map(pos => {
+                               const isNew = tireInfo?.positions.includes(pos.label);
+                               return (
+                                 <div 
+                                   key={pos.id} 
+                                   className={`absolute w-8 h-12 rounded-lg border flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 ${
+                                     pos.x === 'left-0' ? 'left-0 -ml-1' : 'right-0 -mr-1'
+                                   } ${pos.y} ${
+                                     isNew 
+                                     ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.5)]' 
+                                     : 'bg-slate-800 border-slate-700'
+                                   }`}
+                                   title={pos.label}
+                                 >
+                                   <div className={`w-1 h-1 rounded-full ${isNew ? 'bg-white animate-pulse' : 'bg-slate-600'}`}></div>
+                                 </div>
+                               );
+                             })}
                           </div>
-                          <div>
-                            <p className="text-[8px] font-write text-slate-500 uppercase tracking-widest mb-1">Modelo Ativo</p>
-                            <p className="text-sm font-bold">{tireInfo?.model}</p>
-                          </div>
-                        </div>
-                        <div className="pt-2 border-t border-white/5 flex justify-between items-center">
-                          <span className="text-[9px] font-bold text-slate-500 uppercase">Odômetro na Troca</span>
-                          <span className="text-[10px] font-write text-emerald-400">{lastTireChange.km.toLocaleString()} KM</span>
                         </div>
                       </div>
                     ) : (
-                      <div className="text-center py-4">
-                        <i className="fas fa-triangle-exclamation text-amber-500 text-xl mb-2"></i>
-                        <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest">Sem registro de troca</p>
+                      <div className="text-center py-10 opacity-50">
+                        <i className="fas fa-car-rear text-3xl mb-4 text-slate-600"></i>
+                        <p className="text-[10px] font-write uppercase tracking-[0.2em]">Sem histórico de pneus registrado</p>
                       </div>
                     )}
                   </div>
@@ -637,34 +627,6 @@ const FleetManager: React.FC = () => {
                         )}
                       </div>
                     </div>
-
-                    {vehicle.lastChecklist && (
-                      <div className="pt-6 border-t border-slate-200">
-                        <h5 className="text-[9px] font-write text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                          <i className="fas fa-clipboard-check text-emerald-500"></i> Checklist de Saída
-                        </h5>
-                        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex justify-around">
-                          <div className="flex flex-col items-center gap-2">
-                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${vehicle.lastChecklist.oilChecked ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
-                               <i className="fas fa-oil-can text-sm"></i>
-                             </div>
-                             <span className="text-[8px] font-bold uppercase text-slate-400">Óleo</span>
-                          </div>
-                          <div className="flex flex-col items-center gap-2">
-                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${vehicle.lastChecklist.waterChecked ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
-                               <i className="fas fa-tint text-sm"></i>
-                             </div>
-                             <span className="text-[8px] font-bold uppercase text-slate-400">Água</span>
-                          </div>
-                          <div className="flex flex-col items-center gap-2">
-                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${vehicle.lastChecklist.tiresChecked ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
-                               <i className="fas fa-truck-front text-sm"></i>
-                             </div>
-                             <span className="text-[8px] font-bold uppercase text-slate-400">Pneus</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}

@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { Vehicle, Driver, Trip, Checklist, VehicleStatus, MaintenanceRecord, AppNotification, Fine, ScheduledTrip } from '../types';
+import { Vehicle, Driver, Trip, Checklist, VehicleStatus, MaintenanceRecord, AppNotification, Fine, ScheduledTrip, AuditLog } from '../types';
 import { apiService } from '../services/api';
 
 interface FleetContextType {
@@ -13,6 +13,7 @@ interface FleetContextType {
   checklists: Checklist[];
   fines: Fine[];
   notifications: AppNotification[];
+  auditLogs: AuditLog[];
   isLoading: boolean;
   currentUser: Driver | null;
   addVehicle: (v: Vehicle) => Promise<void>;
@@ -26,7 +27,7 @@ interface FleetContextType {
   updateScheduledTrip: (id: string, updates: Partial<ScheduledTrip>) => Promise<void>;
   deleteScheduledTrip: (id: string) => Promise<void>;
   endTrip: (tripId: string, currentKm: number, endTime: string, expenses?: any) => Promise<void>;
-  cancelTrip: (tripId: string) => Promise<void>;
+  cancelTrip: (tripId: string, reason: string) => Promise<void>;
   addFine: (fine: Fine) => Promise<void>;
   deleteFine: (id: string) => Promise<void>;
   addMaintenanceRecord: (m: MaintenanceRecord) => Promise<void>;
@@ -50,6 +51,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>([]);
   const [fines, setFines] = useState<Fine[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<Driver | null>(null);
@@ -66,7 +68,9 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         apiService.getMaintenance(),
         apiService.getFines(),
         apiService.getNotifications(),
-        apiService.getChecklists()
+        apiService.getChecklists(),
+        // Usamos cache local para audit logs já que a API original não tinha
+        Promise.resolve(JSON.parse(localStorage.getItem('fleet_audit_logs') || '[]'))
       ]);
       
       function getValue<T>(index: number, defaultValue: T): T {
@@ -83,6 +87,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setFines(getValue(6, []));
       setNotifications(getValue(7, []));
       setChecklists(getValue(8, []));
+      setAuditLogs(getValue(9, []));
 
       const savedUser = sessionStorage.getItem('fleet_current_user');
       if (savedUser) {
@@ -103,12 +108,18 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     init();
   }, []);
 
+  // Persistir audit logs localmente (simulando backend)
+  useEffect(() => {
+    if (auditLogs.length > 0) {
+      localStorage.setItem('fleet_audit_logs', JSON.stringify(auditLogs));
+    }
+  }, [auditLogs]);
+
   const login = async (user: string, pass: string) => {
     setIsLoading(true);
     const normalizedUser = user.toLowerCase().trim();
     
     try {
-      // 1. Tentar Login via API
       const driver = await apiService.login(normalizedUser, pass);
       if (driver) {
         setCurrentUser(driver);
@@ -120,14 +131,10 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.warn("API Login failed, trying local fallback:", e);
     }
 
-    // 2. Fallback Local: Se a API falhou ou está offline, verificamos no estado carregado (cache)
-    // Isso resolve o problema de usuários criados que ainda não sincronizaram ou quando a API dá "Failed to fetch"
-    const localDriver = drivers.find(d => 
-      d.username.toLowerCase() === normalizedUser && 
-      (d.password === pass || (normalizedUser === 'admin' && pass === 'admin'))
-    );
+    // Fallback local: Prioriza sempre a senha do objeto se ele existir
+    const localDriver = drivers.find(d => d.username.toLowerCase() === normalizedUser);
 
-    if (localDriver) {
+    if (localDriver && localDriver.password === pass) {
       setCurrentUser(localDriver);
       sessionStorage.setItem('fleet_current_user', JSON.stringify(localDriver));
       setIsLoading(false);
@@ -247,6 +254,67 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const cancelTrip = async (id: string, reason: string) => {
+    if (!reason.trim()) throw new Error("O motivo do cancelamento é obrigatório.");
+    setIsLoading(true);
+    try {
+      const trip = activeTrips.find(t => t.id === id);
+      if (trip) {
+        const cancelledTrip: Trip = {
+          ...trip,
+          isCancelled: true,
+          cancellationReason: reason,
+          cancelledBy: currentUser?.name || 'Sistema',
+          endTime: new Date().toISOString()
+        };
+
+        const log: AuditLog = {
+          id: Math.random().toString(36).substr(2, 9),
+          entityId: id,
+          userId: currentUser?.id || 'sys',
+          userName: currentUser?.name || 'Sistema',
+          action: 'CANCELLED',
+          description: `Viagem cancelada. Motivo: ${reason}`,
+          timestamp: new Date().toISOString()
+        };
+
+        // Salvar localmente o cancelamento no histórico
+        setCompletedTrips(prev => [cancelledTrip, ...prev]);
+        setAuditLogs(prev => [log, ...prev]);
+        
+        // Atualizar status do veículo na API e localmente
+        await apiService.updateVehicle(trip.vehicleId, { status: VehicleStatus.AVAILABLE });
+        setActiveTrips(prev => prev.filter(t => t.id !== id));
+        setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE } : v));
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateTrip = async (id: string, updates: Partial<Trip>) => {
+    const trip = activeTrips.find(t => t.id === id);
+    if (!trip) return;
+
+    // Se for alteração de rota, gerar log
+    if (updates.destination && updates.destination !== trip.destination) {
+      const log: AuditLog = {
+        id: Math.random().toString(36).substr(2, 9),
+        entityId: id,
+        userId: currentUser?.id || 'sys',
+        userName: currentUser?.name || 'Sistema',
+        action: 'ROUTE_CHANGE',
+        description: `Alteração de destino: de "${trip.destination}" para "${updates.destination}"`,
+        previousValue: trip.destination,
+        newValue: updates.destination,
+        timestamp: new Date().toISOString()
+      };
+      setAuditLogs(prev => [log, ...prev]);
+    }
+
+    setActiveTrips(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  };
+
   const addScheduledTrip = async (t: ScheduledTrip) => {
     setIsLoading(true);
     try {
@@ -276,24 +344,6 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsLoading(false);
     }
   }, []);
-
-  const cancelTrip = async (id: string) => {
-    setIsLoading(true);
-    try {
-      const trip = activeTrips.find(t => t.id === id);
-      if (trip) {
-        await apiService.updateVehicle(trip.vehicleId, { status: VehicleStatus.AVAILABLE });
-        setActiveTrips(prev => prev.filter(t => t.id !== id));
-        setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE } : v));
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const updateTrip = async (id: string, updates: Partial<Trip>) => {
-    setActiveTrips(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-  };
 
   const addFine = async (f: Fine) => {
     await apiService.saveFine(f);
@@ -356,17 +406,18 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       Object.keys(localStorage).forEach(key => {
         if (key.startsWith('fleet_cache_')) localStorage.removeItem(key);
       });
+      localStorage.removeItem('fleet_audit_logs');
       window.location.reload();
     }
   }, []);
 
   const contextValue = useMemo(() => ({
-    vehicles, drivers, activeTrips, completedTrips, scheduledTrips, maintenanceRecords, checklists, fines, notifications, isLoading,
+    vehicles, drivers, activeTrips, completedTrips, scheduledTrips, maintenanceRecords, checklists, fines, notifications, auditLogs, isLoading,
     currentUser, addVehicle, updateVehicle, addDriver, updateDriver, deleteDriver, startTrip, updateTrip, addScheduledTrip, updateScheduledTrip, deleteScheduledTrip, endTrip, cancelTrip,
     addFine, deleteFine, addMaintenanceRecord, updateMaintenanceRecord, resolveMaintenance, markNotificationAsRead, changePassword,
     login, logout, resetDatabase
   }), [
-    vehicles, drivers, activeTrips, completedTrips, scheduledTrips, maintenanceRecords, checklists, fines, notifications, isLoading,
+    vehicles, drivers, activeTrips, completedTrips, scheduledTrips, maintenanceRecords, checklists, fines, notifications, auditLogs, isLoading,
     currentUser, addVehicle, updateVehicle, addDriver, updateDriver, deleteDriver, startTrip, updateTrip, addScheduledTrip, updateScheduledTrip, deleteScheduledTrip, endTrip, cancelTrip,
     addFine, deleteFine, addMaintenanceRecord, updateMaintenanceRecord, resolveMaintenance, markNotificationAsRead, changePassword,
     login, logout, resetDatabase

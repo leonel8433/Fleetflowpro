@@ -11,6 +11,18 @@ export enum OccurrenceSeverity {
   HIGH = 'high'
 }
 
+export interface AuditLog {
+  id: string;
+  entityId: string; // ID da Viagem ou Veículo
+  userId: string;
+  userName: string;
+  action: 'ROUTE_CHANGE' | 'CANCELLED' | 'KM_CORRECTION';
+  description: string;
+  previousValue?: string;
+  newValue?: string;
+  timestamp: string;
+}
+
 export interface Occurrence {
   id: string;
   tripId: string;
@@ -104,6 +116,9 @@ export interface Trip {
   fuelExpense?: number;
   otherExpense?: number;
   expenseNotes?: string;
+  isCancelled?: boolean;
+  cancellationReason?: string;
+  cancelledBy?: string;
 }
 
 export interface ScheduledTrip extends Omit<Trip, 'startTime' | 'startKm'> {

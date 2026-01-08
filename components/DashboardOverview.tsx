@@ -43,6 +43,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
 
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [showOccurrenceModal, setShowOccurrenceModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
   const [occurrenceText, setOccurrenceText] = useState('');
   
   const [endKm, setEndKm] = useState<number>(0);
@@ -98,11 +100,16 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
     alert('Ocorrência registrada no diário de bordo.');
   };
 
-  const handleCancelActiveTrip = () => {
-    if (myActiveTrip && window.confirm('Deseja realmente CANCELAR esta viagem? O veículo retornará ao status Disponível e os dados desta jornada serão perdidos.')) {
-      cancelTrip(myActiveTrip.id);
-      alert('Operação cancelada com sucesso.');
+  const handleConfirmCancelTrip = () => {
+    if (!myActiveTrip || !cancelReason.trim()) {
+      alert("O motivo do cancelamento é obrigatório.");
+      return;
     }
+    
+    cancelTrip(myActiveTrip.id, cancelReason.trim());
+    setShowCancelModal(false);
+    setCancelReason('');
+    alert('Operação cancelada com sucesso. O log foi registrado no sistema.');
   };
 
   const handleCancelScheduledTrip = useCallback(async (id: string) => {
@@ -247,12 +254,47 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
              <button onClick={() => setShowOccurrenceModal(true)} className="py-5 bg-slate-700 hover:bg-slate-600 rounded-2xl font-write text-[10px] uppercase tracking-widest shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2">
                 <i className="fas fa-exclamation-triangle"></i> Relatar Evento
              </button>
-             <button onClick={handleCancelActiveTrip} className="py-5 bg-amber-600/10 hover:bg-amber-600 text-amber-500 hover:text-white rounded-2xl font-write text-[10px] uppercase tracking-widest transition-all border border-amber-600/20 flex items-center justify-center gap-2">
+             <button onClick={() => setShowCancelModal(true)} className="py-5 bg-amber-600/10 hover:bg-amber-600 text-amber-500 hover:text-white rounded-2xl font-write text-[10px] uppercase tracking-widest transition-all border border-amber-600/20 flex items-center justify-center gap-2">
                 <i className="fas fa-trash-can"></i> Cancelar Viagem
              </button>
              <button onClick={() => { setEndKm(vehicles.find(v => v.id === myActiveTrip.vehicleId)?.currentKm || 0); setShowFinishModal(true); }} className="py-5 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-write text-[10px] uppercase tracking-widest shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2">
                 <i className="fas fa-flag-checkered"></i> Encerrar Rota
              </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Cancelamento de Viagem */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-[260] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-lg animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 space-y-6 animate-in zoom-in-95 duration-300">
+            <div className="text-center">
+               <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center text-2xl mx-auto mb-4">
+                 <i className="fas fa-triangle-exclamation"></i>
+               </div>
+               <h3 className="text-xl font-write uppercase text-slate-800 tracking-tight">Motivo do Cancelamento</h3>
+               <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Esta ação é irreversível e será registrada para auditoria.</p>
+            </div>
+            <div className="bg-slate-50 p-6 rounded-3xl border border-red-100">
+               <label className="block text-[9px] font-write text-red-600 uppercase mb-3 tracking-widest font-bold">Declare obrigatoriamente o motivo:</label>
+               <textarea 
+                 autoFocus
+                 value={cancelReason} 
+                 onChange={(e) => setCancelReason(e.target.value)} 
+                 className="w-full bg-transparent outline-none font-write text-sm text-slate-950 min-h-[100px]" 
+                 placeholder="Ex: Veículo quebrou, Erro no agendamento, Problemas pessoais..." 
+               />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { setShowCancelModal(false); setCancelReason(''); }} className="flex-1 py-5 text-slate-400 font-write uppercase text-[10px] tracking-widest font-bold">Voltar</button>
+              <button 
+                onClick={handleConfirmCancelTrip} 
+                disabled={!cancelReason.trim()}
+                className="flex-[2] py-5 bg-red-600 text-white rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl shadow-red-100 active:scale-95 transition-all disabled:opacity-20"
+              >
+                Confirmar Cancelamento
+              </button>
+            </div>
           </div>
         </div>
       )}
