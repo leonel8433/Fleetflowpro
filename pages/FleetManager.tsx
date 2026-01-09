@@ -60,7 +60,7 @@ const FleetManager: React.FC = () => {
     year: new Date().getFullYear().toString(),
     currentKm: '',
     fuelLevel: '100',
-    fuelType: 'Diesel' as Vehicle['fuelType']
+    fuelType: 'Flex' as Vehicle['fuelType']
   });
 
   const toggleCategorySelection = (catId: string) => {
@@ -208,7 +208,7 @@ const FleetManager: React.FC = () => {
         alert('Veículo cadastrado!');
       }
 
-      setNewVehicle({ plate: '', brand: '', model: '', year: new Date().getFullYear().toString(), currentKm: '', fuelLevel: '100', fuelType: 'Diesel' });
+      setNewVehicle({ plate: '', brand: '', model: '', year: new Date().getFullYear().toString(), currentKm: '', fuelLevel: '100', fuelType: 'Flex' });
       setShowVehicleForm(false);
       setEditingVehicleId(null);
     } catch (error) {
@@ -290,7 +290,7 @@ const FleetManager: React.FC = () => {
             <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Modelo</label><input required placeholder="Ex: Hilux" value={newVehicle.model} onChange={(e) => setNewVehicle({ ...newVehicle, model: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" /></div>
             <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Ano</label><input required type="number" value={newVehicle.year} onChange={(e) => setNewVehicle({ ...newVehicle, year: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none" /></div>
             <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">KM Atual</label><input required type="number" value={newVehicle.currentKm} onChange={(e) => setNewVehicle({ ...newVehicle, currentKm: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none" /></div>
-            <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Combustível</label><select value={newVehicle.fuelType} onChange={(e) => setNewVehicle({ ...newVehicle, fuelType: e.target.value as any })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none"><option value="Diesel">Diesel</option><option value="Gasolina">Gasolina</option><option value="Flex">Flex</option></select></div>
+            <div><label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Combustível</label><select value={newVehicle.fuelType} onChange={(e) => setNewVehicle({ ...newVehicle, fuelType: e.target.value as any })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none"><option value="Flex">Flex</option><option value="Diesel">Diesel</option><option value="Gasolina">Gasolina</option><option value="Etanol">Etanol</option><option value="Elétrico">Elétrico</option><option value="GNV">GNV</option></select></div>
             <div className="md:col-span-3 flex justify-end gap-3 mt-4"><button type="submit" className="bg-slate-900 text-white px-12 py-4 rounded-2xl font-write uppercase text-xs shadow-xl">{editingVehicleId ? 'Salvar' : 'Cadastrar'}</button></div>
           </form>
         </div>
@@ -407,9 +407,26 @@ const FleetManager: React.FC = () => {
                   </div>
                 </div>
                 <div className="mt-8 flex gap-2 border-t border-slate-50 pt-8">
-                  <button onClick={() => setExpandedTiresId(isTiresExpanded ? null : vehicle.id)} className={`flex-1 py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest border transition-all ${isTiresExpanded ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><i className="fas fa-car-rear mr-2"></i> Pneus</button>
-                  {vehicle.status === VehicleStatus.MAINTENANCE && (<button onClick={() => setResolvingMaintenance({ recordId: vehicleMaintenances[0]?.id || null, vehicleId: vehicle.id })} className="flex-1 bg-red-600 text-white py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest shadow-lg">Liberar</button>)}
-                  <button onClick={() => setExpandedVehicleId(isExpanded ? null : vehicle.id)} className={`flex-1 py-4 border rounded-2xl text-[9px] font-write uppercase transition-all ${isExpanded ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><i className="fas fa-history mr-2"></i> Log</button>
+                  <div className="flex-1 relative group">
+                    <button onClick={() => setExpandedTiresId(isTiresExpanded ? null : vehicle.id)} className={`w-full py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest border transition-all ${isTiresExpanded ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+                      <i className="fas fa-car-rear mr-2"></i> Pneus
+                    </button>
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[8px] font-bold uppercase py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">Ver Estado Pneus</span>
+                  </div>
+
+                  {vehicle.status === VehicleStatus.MAINTENANCE && (
+                    <div className="flex-1 relative group">
+                      <button onClick={() => setResolvingMaintenance({ recordId: vehicleMaintenances[0]?.id || null, vehicleId: vehicle.id })} className="w-full bg-red-600 text-white py-4 rounded-2xl text-[9px] font-write uppercase tracking-widest shadow-lg">Liberar</button>
+                      <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[8px] font-bold uppercase py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">Retirar da Oficina</span>
+                    </div>
+                  )}
+
+                  <div className="flex-1 relative group">
+                    <button onClick={() => setExpandedVehicleId(isExpanded ? null : vehicle.id)} className={`w-full py-4 border rounded-2xl text-[9px] font-write uppercase transition-all ${isExpanded ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+                      <i className="fas fa-history mr-2"></i> Log
+                    </button>
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[8px] font-bold uppercase py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">Histórico Técnico</span>
+                  </div>
                 </div>
               </div>
               

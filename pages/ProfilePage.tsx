@@ -15,8 +15,6 @@ const ProfilePage: React.FC = () => {
     setError('');
     setSuccess(false);
 
-    // Validação de segurança básica
-    // Se currentUser.password não estiver presente, e for o admin, permite 'admin' como padrão
     const storedPassword = currentUser?.password;
     const isAdmin = currentUser?.username === 'admin';
     
@@ -50,7 +48,6 @@ const ProfilePage: React.FC = () => {
     setNewPassword('');
     setConfirmPassword('');
     
-    // Auto-hide success message after 5 seconds
     setTimeout(() => setSuccess(false), 5000);
   };
 
@@ -75,7 +72,8 @@ const ProfilePage: React.FC = () => {
               )}
             </div>
             <h3 className="font-write text-xl text-slate-800 leading-tight">{currentUser?.name}</h3>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">@{currentUser?.username}</p>
+            {currentUser?.company && <p className="text-[10px] text-blue-600 font-bold uppercase mb-1">{currentUser.company}</p>}
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">@{currentUser?.username}</p>
             
             <div className="w-full mt-8 pt-8 border-t border-slate-50 space-y-4">
               <div className="flex justify-between items-center">
@@ -97,7 +95,7 @@ const ProfilePage: React.FC = () => {
         </div>
 
         {/* Formulário de Alteração de Senha */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-8">
           <div className="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-100">
             <h3 className="text-sm font-write text-slate-800 uppercase tracking-widest mb-10 flex items-center gap-3">
               <div className="w-8 h-8 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500">
@@ -177,6 +175,13 @@ const ProfilePage: React.FC = () => {
               </button>
             </form>
           </div>
+
+          {currentUser?.notes && (
+            <div className="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-100">
+               <h3 className="text-[10px] font-write text-slate-400 uppercase tracking-[0.2em] mb-4">Notas Administrativas</h3>
+               <p className="text-sm text-slate-600 leading-relaxed italic">"{currentUser.notes}"</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

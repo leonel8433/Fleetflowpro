@@ -23,6 +23,22 @@ const AppContent: React.FC = () => {
 
   const isAdmin = currentUser?.username === 'admin';
 
+  // Lógica para resolver o problema de inputs escondidos pelo teclado no mobile
+  useEffect(() => {
+    const handleFocus = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+        // Delay leve para esperar o teclado abrir no Android/iOS
+        setTimeout(() => {
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+      }
+    };
+
+    window.addEventListener('focusin', handleFocus);
+    return () => window.removeEventListener('focusin', handleFocus);
+  }, []);
+
   // Filtragem de multas não lidas para o motorista logado
   const unreadFineNotifications = useMemo(() => {
     if (!currentUser || isAdmin) return [];

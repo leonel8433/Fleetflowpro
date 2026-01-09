@@ -64,7 +64,7 @@ export interface Vehicle {
   year: number;
   currentKm: number;
   fuelLevel: number;
-  fuelType: 'Diesel' | 'Gasolina' | 'Flex' | 'Elétrico' | 'GNV';
+  fuelType: 'Diesel' | 'Gasolina' | 'Flex' | 'Etanol' | 'Elétrico' | 'GNV';
   status: VehicleStatus;
   lastChecklist?: Checklist;
 }
@@ -76,6 +76,8 @@ export interface Driver {
   category: string; 
   email?: string;
   phone?: string;
+  company?: string; // Campo adicionado para vínculo corporativo
+  notes?: string;   // Campo adicionado para observações administrativas
   username: string;
   password?: string;
   passwordChanged?: boolean; 

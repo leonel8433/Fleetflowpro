@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useFleet } from '../context/FleetContext';
 import { Fine, Driver } from '../types';
 
@@ -9,6 +9,7 @@ const DriverManagement: React.FC = () => {
   const [showDriverForm, setShowDriverForm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingDriverId, setEditingDriverId] = useState<string | null>(null);
+  const [driverSearchTerm, setDriverSearchTerm] = useState('');
 
   const [newFine, setNewFine] = useState({
     driverId: '',
@@ -25,10 +26,41 @@ const DriverManagement: React.FC = () => {
     category: 'B',
     email: '',
     phone: '',
+    company: '',
+    notes: '',
     username: '',
     password: '',
     avatar: ''
   });
+
+  // Função para aplicar máscara de telefone (xx) xxxxx-xxxx
+  const maskPhone = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    let masked = digits;
+
+    if (digits.length <= 11) {
+      if (digits.length > 0) masked = `(${digits.slice(0, 2)}`;
+      if (digits.length > 2) masked += `) ${digits.slice(2, 7)}`;
+      if (digits.length > 7) masked += `-${digits.slice(7, 11)}`;
+    } else {
+      // Caso ultrapasse 11 dígitos, mantém o padrão mas trunca
+      masked = `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+    }
+
+    return masked;
+  };
+
+  const filteredDrivers = useMemo(() => {
+    const term = driverSearchTerm.toLowerCase();
+    return drivers.filter(d => 
+      d.username !== 'admin' && (
+        d.name.toLowerCase().includes(term) ||
+        d.username.toLowerCase().includes(term) ||
+        d.license.toLowerCase().includes(term) ||
+        (d.company && d.company.toLowerCase().includes(term))
+      )
+    );
+  }, [drivers, driverSearchTerm]);
 
   const handleFineSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +94,6 @@ const DriverManagement: React.FC = () => {
     const normalizedLicense = newDriver.license.trim();
     const normalizedEmail = newDriver.email?.toLowerCase().trim();
 
-    // Verificações de duplicidade
     const usernameExists = drivers.some(d => d.username === normalizedUsername && d.id !== editingDriverId);
     const licenseExists = drivers.some(d => d.license === normalizedLicense && d.id !== editingDriverId);
 
@@ -76,23 +107,24 @@ const DriverManagement: React.FC = () => {
       return;
     }
 
+    const driverData: Partial<Driver> = {
+      name: normalizedName,
+      license: normalizedLicense,
+      category: newDriver.category,
+      email: normalizedEmail,
+      phone: newDriver.phone,
+      company: newDriver.company.trim(),
+      notes: newDriver.notes.trim(),
+      username: normalizedUsername,
+      avatar: newDriver.avatar
+    };
+
     if (editingDriverId) {
-      const updates: Partial<Driver> = {
-        name: normalizedName,
-        license: normalizedLicense,
-        category: newDriver.category,
-        email: normalizedEmail,
-        phone: newDriver.phone,
-        username: normalizedUsername,
-        avatar: newDriver.avatar
-      };
-
       if (newDriver.password.trim() !== '') {
-        updates.password = newDriver.password;
-        updates.passwordChanged = false;
+        driverData.password = newDriver.password;
+        driverData.passwordChanged = false;
       }
-
-      updateDriver(editingDriverId, updates);
+      updateDriver(editingDriverId, driverData);
       alert('Cadastro do motorista atualizado com sucesso!');
     } else {
       const driver: Driver = {
@@ -102,6 +134,8 @@ const DriverManagement: React.FC = () => {
         category: newDriver.category,
         email: normalizedEmail,
         phone: newDriver.phone,
+        company: newDriver.company.trim(),
+        notes: newDriver.notes.trim(),
         username: normalizedUsername,
         password: newDriver.password || '123',
         passwordChanged: false,
@@ -122,6 +156,8 @@ const DriverManagement: React.FC = () => {
       category: driver.category,
       email: driver.email || '',
       phone: driver.phone || '',
+      company: driver.company || '',
+      notes: driver.notes || '',
       username: driver.username,
       password: '',
       avatar: driver.avatar || ''
@@ -135,12 +171,10 @@ const DriverManagement: React.FC = () => {
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validação de tamanho simples (2MB) para não sobrecarregar o localStorage
       if (file.size > 2 * 1024 * 1024) {
         alert("A imagem selecionada é muito grande. Por favor, escolha uma foto de até 2MB.");
         return;
       }
-
       const reader = new FileReader();
       reader.onloadend = () => {
         setNewDriver(prev => ({ ...prev, avatar: reader.result as string }));
@@ -155,7 +189,7 @@ const DriverManagement: React.FC = () => {
   };
 
   const resetFormState = () => {
-    setNewDriver({ name: '', license: '', category: 'B', email: '', phone: '', username: '', password: '', avatar: '' });
+    setNewDriver({ name: '', license: '', category: 'B', email: '', phone: '', company: '', notes: '', username: '', password: '', avatar: '' });
     setEditingDriverId(null);
   };
 
@@ -344,12 +378,21 @@ const DriverManagement: React.FC = () => {
                      <input required placeholder="Ex: Marcos Leonel" value={newDriver.name} onChange={(e) => setNewDriver({ ...newDriver, name: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-950" />
                    </div>
                    <div>
+                     <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Empresa / Unidade</label>
+                     <input placeholder="Ex: Matriz SP" value={newDriver.company} onChange={(e) => setNewDriver({ ...newDriver, company: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-950" />
+                   </div>
+                   <div>
                      <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">E-mail Corporativo</label>
                      <input type="email" placeholder="nome@frota.com" value={newDriver.email} onChange={(e) => setNewDriver({ ...newDriver, email: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-950" />
                    </div>
                    <div>
                      <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Telefone / WhatsApp</label>
-                     <input placeholder="(11) 99999-9999" value={newDriver.phone} onChange={(e) => setNewDriver({ ...newDriver, phone: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-950" />
+                     <input 
+                      placeholder="(11) 99999-9999" 
+                      value={newDriver.phone} 
+                      onChange={(e) => setNewDriver({ ...newDriver, phone: maskPhone(e.target.value) })} 
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-950" 
+                    />
                    </div>
                    <div>
                      <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Registro CNH</label>
@@ -382,6 +425,10 @@ const DriverManagement: React.FC = () => {
                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-950" 
                      />
                    </div>
+                   <div className="md:col-span-2">
+                     <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Observações Administrativas</label>
+                     <textarea placeholder="Notas sobre o perfil do condutor..." value={newDriver.notes} onChange={(e) => setNewDriver({ ...newDriver, notes: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-950 min-h-[80px]" />
+                   </div>
                 </div>
               </div>
             </div>
@@ -396,10 +443,23 @@ const DriverManagement: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
-        <div className="xl:col-span-8 space-y-4">
-          <h3 className="text-[10px] font-write text-slate-400 uppercase tracking-[0.2em] px-2 mb-6">Corpo de Condutores ({drivers.length})</h3>
+        <div className="xl:col-span-8 space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-2">
+            <h3 className="text-[10px] font-write text-slate-400 uppercase tracking-[0.2em]">Corpo de Condutores ({filteredDrivers.length})</h3>
+            <div className="relative w-full md:w-64">
+              <i className="fas fa-filter absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+              <input 
+                type="text" 
+                placeholder="Filtrar motoristas..." 
+                value={driverSearchTerm}
+                onChange={(e) => setDriverSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
+              />
+            </div>
+          </div>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {drivers.filter(d => d.username !== 'admin').map(driver => {
+            {filteredDrivers.map(driver => {
               const driverFines = fines.filter(f => f.driverId === driver.id);
               const totalPoints = driverFines.reduce((sum, f) => sum + f.points, 0);
               
@@ -417,6 +477,7 @@ const DriverManagement: React.FC = () => {
                     </div>
                     <div className="flex-1 min-w-0 pt-1">
                       <h4 className="font-write text-lg text-slate-800 truncate leading-tight mb-1">{driver.name}</h4>
+                      {driver.company && <p className="text-[10px] text-blue-600 font-bold uppercase mb-2">{driver.company}</p>}
                       <div className="flex items-center gap-2 mb-3">
                          <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-[8px] font-write uppercase tracking-widest">CNH {driver.license}</span>
                          <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[8px] font-write uppercase tracking-widest">CAT {driver.category}</span>
@@ -447,6 +508,12 @@ const DriverManagement: React.FC = () => {
                 </div>
               );
             })}
+            {filteredDrivers.length === 0 && (
+              <div className="md:col-span-2 py-20 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                <i className="fas fa-users-slash text-4xl text-slate-200 mb-4"></i>
+                <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Nenhum motorista localizado</p>
+              </div>
+            )}
           </div>
         </div>
 

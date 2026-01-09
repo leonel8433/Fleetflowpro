@@ -163,9 +163,26 @@ const TripMonitoring: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => handleOpenExternalMap(trip)} className="w-10 h-10 bg-white/5 text-slate-400 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all border border-white/5"><i className="fas fa-external-link-alt text-xs"></i></button>
-                      <button onClick={() => toggleMapVisibility(trip.id)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all border ${isMapVisible ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'}`}><i className="fas fa-map text-xs"></i></button>
-                      <button onClick={() => handleOpenEditRoute(trip)} className="w-10 h-10 bg-white/5 text-slate-400 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all border border-white/5"><i className="fas fa-route text-xs"></i></button>
+                      <div className="relative group">
+                        <button onClick={() => handleOpenExternalMap(trip)} className="w-10 h-10 bg-white/5 text-slate-400 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all border border-white/5">
+                          <i className="fas fa-external-link-alt text-xs"></i>
+                        </button>
+                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[8px] font-bold uppercase py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">GPS Externo</span>
+                      </div>
+                      
+                      <div className="relative group">
+                        <button onClick={() => toggleMapVisibility(trip.id)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all border ${isMapVisible ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'}`}>
+                          <i className="fas fa-map text-xs"></i>
+                        </button>
+                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[8px] font-bold uppercase py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">Ver Mapa</span>
+                      </div>
+
+                      <div className="relative group">
+                        <button onClick={() => handleOpenEditRoute(trip)} className="w-10 h-10 bg-white/5 text-slate-400 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all border border-white/5">
+                          <i className="fas fa-route text-xs"></i>
+                        </button>
+                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[8px] font-bold uppercase py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">Alterar Rota</span>
+                      </div>
                     </div>
                   </div>
 

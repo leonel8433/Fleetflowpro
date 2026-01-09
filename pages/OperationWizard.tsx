@@ -167,19 +167,21 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
     if (onComplete) onComplete();
   };
 
+  // Correção da lógica de cancelamento (Foco da reclamação do usuário)
   const handleCancelWizard = () => {
-    const isScheduled = !!scheduledTripId;
-    let message = 'Deseja realmente cancelar a preparação da viagem?';
-    
-    if (isScheduled) {
-      if (window.confirm('Esta viagem foi agendada. Deseja APAGAR o agendamento da sua escala ou apenas SAIR desta tela?\n\nOK = Apagar Agendamento\nCANCELAR = Apenas Sair')) {
+    if (scheduledTripId) {
+      const choice = window.confirm('Deseja APAGAR este agendamento da sua escala?\n\nClique OK para apagar o agendamento.\nClique CANCELAR para apenas sair e manter o agendamento salvo.');
+      if (choice) {
         deleteScheduledTrip(scheduledTripId);
-        alert('Agendamento removido da sua escala.');
+        alert('Agendamento removido.');
       }
     } else {
-      if (!window.confirm(message)) return;
+      if (!window.confirm('Deseja realmente cancelar a preparação desta viagem?')) {
+        return;
+      }
     }
     
+    // Agora sempre chama onComplete para garantir que o usuário saia da tela
     if (onComplete) onComplete();
   };
 
@@ -243,7 +245,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Data da Viagem</label>
-                <input type="date" value={route.tripDate} onChange={(e) => setRoute({ ...route, tripDate: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-write font-bold text-slate-950" />
+                <input type="date" value={route.tripDate} onChange={(e) => setRoute({ ...route, tripDate: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-write font-bold text-slate-950 scroll-mt-20" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -268,7 +270,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                     disabled={!route.state}
                     value={route.city} 
                     onChange={(e) => setRoute({ ...route, city: e.target.value })} 
-                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-write font-bold text-slate-950" 
+                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-write font-bold text-slate-950 scroll-mt-20" 
                   />
                   <datalist id="wizard-cities">
                     {cities.map((c, i) => <option key={i} value={c} />)}
@@ -280,7 +282,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
             <div className="space-y-4">
               <div>
                 <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Ponto de Partida</label>
-                <input placeholder="Endereço de Origem" value={route.origin} onChange={(e) => setRoute({ ...route, origin: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-write font-bold text-slate-950" />
+                <input placeholder="Endereço de Origem" value={route.origin} onChange={(e) => setRoute({ ...route, origin: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-write font-bold text-slate-950 scroll-mt-20" />
               </div>
 
               <div className="space-y-3">
@@ -297,7 +299,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                         placeholder={`Endereço da parada ${index + 1}...`} 
                         value={wp} 
                         onChange={(e) => updateWaypoint(index, e.target.value)} 
-                        className="flex-1 p-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-write font-bold text-xs text-slate-950"
+                        className="flex-1 p-3 bg-slate-50 border border-slate-100 rounded-xl outline-none font-write font-bold text-xs text-slate-950 scroll-mt-20"
                       />
                       <button type="button" onClick={() => removeWaypoint(index)} className="w-10 h-10 bg-red-50 text-red-500 rounded-xl flex items-center justify-center border border-red-100 hover:bg-red-500 hover:text-white transition-all">
                         <i className="fas fa-times"></i>
@@ -309,7 +311,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
 
               <div>
                 <label className="block text-[10px] font-write text-slate-400 uppercase mb-2">Ponto de Chegada</label>
-                <input placeholder="Endereço de Destino Final" value={route.destination} onChange={(e) => setRoute({ ...route, destination: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-write font-bold text-slate-950" />
+                <input placeholder="Endereço de Destino Final" value={route.destination} onChange={(e) => setRoute({ ...route, destination: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-write font-bold text-slate-950 scroll-mt-20" />
               </div>
             </div>
 
@@ -327,38 +329,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                     src={mapUrl}
                     allowFullScreen
                   ></iframe>
-                  <div className="absolute inset-0 pointer-events-none border-4 border-white/20 rounded-3xl"></div>
                 </div>
-              </div>
-            )}
-
-            {aiSuggestion && (
-              <div className="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100 animate-in slide-in-from-bottom-4 duration-500">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-6 h-6 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-[10px]">
-                    <i className="fas fa-robot"></i>
-                  </div>
-                  <span className="text-[10px] font-write text-indigo-900 uppercase tracking-widest">Sugestão de Logística AI</span>
-                </div>
-                <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                  {aiSuggestion}
-                </p>
-                <div className="mt-4 flex justify-end">
-                   <button 
-                    type="button" 
-                    onClick={() => setAiSuggestion(null)}
-                    className="text-[9px] font-bold text-slate-400 uppercase hover:text-slate-600"
-                   >
-                     Limpar Sugestão
-                   </button>
-                </div>
-              </div>
-            )}
-
-            {isOptimizing && (
-              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 animate-pulse flex flex-col items-center justify-center gap-3">
-                <i className="fas fa-wand-sparkles text-indigo-400 text-xl"></i>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Otimizando sua jornada...</p>
               </div>
             )}
 
@@ -377,14 +348,11 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
             </div>
 
             {isSaoPaulo && (
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
                 <i className="fas fa-traffic-light text-amber-600 mt-1"></i>
                 <div>
                   <p className="text-[10px] font-bold text-amber-800 uppercase tracking-tight">Zona de Rodízio Detectada: São Paulo</p>
-                  <p className="text-[9px] text-amber-700 font-medium leading-relaxed">
-                    O sistema está validando automaticamente a restrição de trânsito para o dia {getSafeTripDate().toLocaleDateString('pt-BR', { weekday: 'long' })}. 
-                    Veículos impedidos pelo rodízio foram bloqueados.
-                  </p>
+                  <p className="text-[9px] text-amber-700 font-medium leading-relaxed">O sistema validará automaticamente o rodízio para {getSafeTripDate().toLocaleDateString('pt-BR', { weekday: 'long' })}.</p>
                 </div>
               </div>
             )}
@@ -411,28 +379,9 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                         : 'border-slate-100 hover:border-blue-200 shadow-sm'
                     }`}
                   >
-                    {restricted && (
-                      <div className="absolute inset-0 bg-red-600/5 flex flex-col items-center justify-center gap-1 z-10 backdrop-blur-[1px]">
-                         <span className="bg-red-600 text-white px-3 py-1 rounded-lg text-[9px] font-write uppercase tracking-widest shadow-lg">IMPEDIDO: RODÍZIO</span>
-                         <span className="text-[8px] font-bold text-red-700 uppercase bg-white/80 px-2 py-0.5 rounded shadow-sm">Restrito na {getRodizioDayLabel(v.plate)}</span>
-                      </div>
-                    )}
-
-                    {isReservedForOther && (
-                      <div className="absolute inset-0 bg-amber-600/5 flex flex-col items-center justify-center gap-1 z-10 backdrop-blur-[1px]">
-                         <span className="bg-amber-600 text-white px-3 py-1 rounded-lg text-[10px] font-write uppercase tracking-widest shadow-lg">RESERVADO</span>
-                         <span className="text-[8px] font-bold text-amber-700 uppercase text-center px-2 bg-white/80 rounded shadow-sm">Escala p/ {reservationDriverName}</span>
-                      </div>
-                    )}
-
                     <div className="relative">
                       <p className="text-xl font-write tracking-widest text-slate-950">{v.plate}</p>
                       <p className="text-[10px] text-slate-400 font-bold uppercase">{v.model}</p>
-                      <div className="mt-4 flex items-center gap-2">
-                         <span className="text-[9px] font-bold text-slate-500 uppercase">Final {v.plate.slice(-1)}</span>
-                         <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
-                         <span className="text-[9px] font-bold text-slate-500 uppercase">{v.brand}</span>
-                      </div>
                     </div>
                   </button>
                 );
@@ -446,7 +395,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
             <div className="flex justify-between pt-6">
               <button onClick={() => setStep(1)} className="text-slate-400 font-write uppercase text-[10px] tracking-widest font-bold">Voltar: Rota</button>
               <div className="flex gap-4">
-                <button onClick={handleCancelWizard} className="text-red-500 font-write uppercase text-[10px] tracking-widest font-bold px-4">Cancelar</button>
+                <button onClick={handleCancelWizard} className="text-red-500 font-write uppercase text-[10px] tracking-widest font-bold px-4 hover:bg-red-50 rounded-xl transition-colors">CANCELAR</button>
                 <button disabled={!selectedVehicle} onClick={() => setStep(3)} className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl disabled:opacity-30 active:scale-95 transition-all">Próximo: Checklist</button>
               </div>
             </div>
@@ -456,32 +405,14 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
         {step === 3 && (
           <div className="p-10 space-y-8 animate-in slide-in-from-right-8 duration-500">
             <h3 className="text-xl font-bold text-slate-800 uppercase tracking-tight">3. Checklist de Saída</h3>
-            
-            {isKmInvalid && (
-              <div className="bg-red-50 p-5 rounded-3xl border border-red-100 flex items-center gap-4 animate-in slide-in-from-top-2 duration-300">
-                <div className="w-10 h-10 bg-red-600 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-red-100">
-                  <i className="fas fa-triangle-exclamation"></i>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-red-800 uppercase tracking-tight">Alerta de Inconsistência no Odômetro</p>
-                  <p className="text-[9px] text-red-700 font-medium leading-relaxed">A quilometragem inserida é menor que a última registrada ({selectedVehicle?.currentKm} KM). Por favor, verifique o painel do veículo.</p>
-                </div>
-              </div>
-            )}
-
-            <div className={`p-8 rounded-3xl border transition-all ${isKmInvalid ? 'bg-red-50/30 border-red-200 ring-4 ring-red-50' : 'bg-slate-50 border-slate-100'}`}>
+            <div className={`p-8 rounded-3xl border transition-all ${isKmInvalid ? 'bg-red-50/30 border-red-200' : 'bg-slate-50 border-slate-100'}`}>
                 <label className="block text-[10px] font-write text-slate-400 uppercase mb-4 text-center tracking-widest font-bold">KM Atual no Painel do {selectedVehicle?.plate}</label>
                 <input 
                   type="number" 
                   value={checklist.km} 
                   onChange={(e) => setChecklist({ ...checklist, km: parseInt(e.target.value) || 0 })} 
-                  className={`w-full p-5 rounded-3xl border-2 font-write text-3xl text-center outline-none focus:ring-4 transition-all ${isKmInvalid ? 'border-red-400 bg-white text-red-600 focus:ring-red-100' : 'border-slate-200 bg-white text-slate-950 focus:ring-blue-50 shadow-inner'}`} 
+                  className="w-full p-5 rounded-3xl border-2 font-write text-3xl text-center outline-none bg-white text-slate-950 scroll-mt-20" 
                 />
-                <div className="flex justify-center mt-3">
-                   <span className={`text-[10px] font-bold uppercase tracking-widest ${isKmInvalid ? 'text-red-500' : 'text-slate-400'}`}>
-                     Último registro: {selectedVehicle?.currentKm} KM
-                   </span>
-                </div>
             </div>
             
             <div className="grid grid-cols-3 gap-4">
@@ -490,22 +421,20 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                   { key: 'waterChecked', label: 'Água' },
                   { key: 'tiresChecked', label: 'Pneus' }
                 ].map(item => (
-                  <button key={item.key} onClick={() => setChecklist({ ...checklist, [item.key]: !checklist[item.key as keyof Checklist] })} className={`p-6 rounded-3xl border-2 flex flex-col items-center gap-3 transition-all ${checklist[item.key as keyof Checklist] ? 'bg-emerald-50 border-emerald-500 text-emerald-600 shadow-lg' : 'bg-white border-slate-100 text-slate-300 hover:border-slate-200'}`}>
+                  <button key={item.key} onClick={() => setChecklist({ ...checklist, [item.key]: !checklist[item.key as keyof Checklist] })} className={`p-6 rounded-3xl border-2 flex flex-col items-center gap-3 transition-all ${checklist[item.key as keyof Checklist] ? 'bg-emerald-50 border-emerald-500 text-emerald-600 shadow-lg' : 'bg-white border-slate-100 text-slate-300'}`}>
                     <i className={`fas ${checklist[item.key as keyof Checklist] ? 'fa-check-circle' : 'fa-circle-notch'} text-xl`}></i>
                     <span className="text-[10px] font-write uppercase tracking-widest">{item.label}</span>
                   </button>
                 ))}
             </div>
 
-            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 animate-in fade-in duration-500">
-                <label className="block text-[10px] font-write text-slate-400 uppercase mb-3 tracking-widest font-bold flex items-center gap-2">
-                  <i className="fas fa-comment-dots text-blue-500"></i> Anotações do Condutor
-                </label>
+            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-3 tracking-widest font-bold">Anotações do Condutor</label>
                 <textarea 
-                  placeholder="Relate aqui qualquer observação sobre o veículo antes de sair (arranhões, barulhos, estado da carga)..." 
+                  placeholder="Relate aqui qualquer observação sobre o veículo..." 
                   value={checklist.comments} 
                   onChange={(e) => setChecklist({ ...checklist, comments: e.target.value })} 
-                  className="w-full bg-white border border-slate-200 p-4 rounded-2xl font-bold text-slate-950 text-sm outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px] transition-all"
+                  className="w-full bg-white border border-slate-200 p-4 rounded-2xl font-bold text-slate-950 text-sm outline-none min-h-[120px] scroll-mt-20"
                 />
             </div>
 
@@ -521,40 +450,16 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
 
         {step === 4 && (
           <div className="p-10 space-y-8 animate-in zoom-in-95 duration-500 text-center">
-            <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-[2rem] flex items-center justify-center text-3xl mx-auto shadow-inner mb-6"><i className="fas fa-check-double"></i></div>
-            <h3 className="text-2xl font-bold text-slate-800 uppercase tracking-tight">Confirmar Início de Jornada?</h3>
-            <p className="text-xs text-slate-400 font-medium uppercase tracking-widest">A rota será aberta automaticamente no seu GPS padrão</p>
-            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-left space-y-2">
-               <p className="text-[10px] text-slate-400 font-bold uppercase">Resumo da Operação</p>
-               <p className="text-sm font-bold text-slate-700">Veículo: {selectedVehicle?.plate} ({selectedVehicle?.model})</p>
-               <p className="text-sm font-bold text-slate-700">Destino Final: {route.destination}</p>
-               {checklist.comments && (
-                  <div className="mt-2 pt-2 border-t border-slate-200">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase">Anotações do Condutor:</p>
-                    <p className="text-[11px] text-slate-600 italic leading-relaxed line-clamp-2">{checklist.comments}</p>
-                  </div>
-               )}
-               {route.waypoints.length > 0 && (
-                 <div className="mt-3 pt-3 border-t border-slate-200">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-2">Paradas Intermediárias:</p>
-                    <ul className="space-y-1">
-                      {route.waypoints.filter(w => w.trim() !== '').map((wp, i) => (
-                        <li key={i} className="text-[11px] font-bold text-slate-500 flex items-center gap-2">
-                           <i className="fas fa-map-marker-alt text-blue-500"></i> {wp}
-                        </li>
-                      ))}
-                    </ul>
-                 </div>
-               )}
+            <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-[2rem] flex items-center justify-center text-3xl mx-auto mb-6"><i className="fas fa-check-double"></i></div>
+            <h3 className="text-2xl font-bold text-slate-800 uppercase tracking-tight">Confirmar Início?</h3>
+            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-left">
+               <p className="text-[10px] text-slate-400 font-bold uppercase">Resumo</p>
+               <p className="text-sm font-bold text-slate-700">Veículo: {selectedVehicle?.plate}</p>
+               <p className="text-sm font-bold text-slate-700">Destino: {route.destination}</p>
             </div>
             <div className="pt-8 flex flex-col gap-4">
-              <button onClick={handleStartTrip} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-write uppercase text-sm tracking-[0.3em] shadow-2xl hover:bg-emerald-700 hover:scale-[1.02] active:scale-95 transition-all">INICIAR AGORA</button>
-              <div className="flex justify-between items-center px-2 mt-4">
-                <button onClick={() => setStep(3)} className="text-slate-400 font-write uppercase text-[10px] tracking-widest font-bold">Revisar Checklist</button>
-                <button onClick={handleCancelWizard} className="text-red-500 font-write uppercase text-[10px] tracking-widest font-bold flex items-center gap-2">
-                  <i className="fas fa-trash-can"></i> Cancelar Operação
-                </button>
-              </div>
+              <button onClick={handleStartTrip} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-write uppercase text-sm tracking-[0.3em] shadow-2xl hover:bg-emerald-700 transition-all">INICIAR AGORA</button>
+              <button onClick={handleCancelWizard} className="text-red-500 font-write uppercase text-[10px] tracking-widest font-bold">Cancelar Operação</button>
             </div>
           </div>
         )}
