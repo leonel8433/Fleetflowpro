@@ -23,12 +23,12 @@ const AppContent: React.FC = () => {
 
   const isAdmin = currentUser?.username === 'admin';
 
-  // Lógica para resolver o problema de inputs escondidos pelo teclado no mobile
+  // FIX: Resolve o problema de inputs escondidos pelo teclado no mobile
   useEffect(() => {
     const handleFocus = (e: FocusEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
-        // Delay leve para esperar o teclado abrir no Android/iOS
+        // Delay para aguardar o teclado do dispositivo abrir completamente
         setTimeout(() => {
           target.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 300);
@@ -39,7 +39,6 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('focusin', handleFocus);
   }, []);
 
-  // Filtragem de multas não lidas para o motorista logado
   const unreadFineNotifications = useMemo(() => {
     if (!currentUser || isAdmin) return [];
     return notifications.filter(n => n.driverId === currentUser.id && n.type === 'new_fine' && !n.isRead);
@@ -52,10 +51,9 @@ const AppContent: React.FC = () => {
     };
     window.addEventListener('start-schedule', handleStartSchedule);
     
-    // Captura erros globais de fetch
     const handleGlobalError = (event: PromiseRejectionEvent) => {
       if (event.reason instanceof Error && event.reason.message.includes('Failed to fetch')) {
-        setConnectionError('Não foi possível conectar ao servidor central. Verifique sua conexão.');
+        setConnectionError('Erro de sincronização com o banco de dados Hostinger.');
         setTimeout(() => setConnectionError(null), 5000);
       }
     };
@@ -67,7 +65,6 @@ const AppContent: React.FC = () => {
     };
   }, []);
 
-  // Dispara o alerta de multas se houver notificações não lidas ao logar
   useEffect(() => {
     if (unreadFineNotifications.length > 0 && !showFineAlert) {
       setShowFineAlert(true);
@@ -109,12 +106,11 @@ const AppContent: React.FC = () => {
       setActiveTab(tab);
       if (tab !== 'operation') setSelectedScheduleId(null);
     }}>
-      {/* Indicador de Status da Nuvem */}
       <div className="fixed top-24 right-4 z-[999] flex flex-col gap-2 pointer-events-none">
         {isLoading && (
           <div className="bg-white/90 backdrop-blur-md px-6 py-3 rounded-2xl shadow-2xl border border-slate-100 flex items-center gap-4 animate-in fade-in slide-in-from-right-4 duration-300 pointer-events-auto">
              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-             <span className="text-[9px] font-write text-slate-600 uppercase tracking-widest">Cloud Sync...</span>
+             <span className="text-[9px] font-write text-slate-600 uppercase tracking-widest">Sincronizando...</span>
           </div>
         )}
         
@@ -124,16 +120,8 @@ const AppContent: React.FC = () => {
              <span className="text-[9px] font-write uppercase tracking-widest">{connectionError}</span>
           </div>
         )}
-
-        {!isLoading && !connectionError && (
-          <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl border border-emerald-100 flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity pointer-events-auto">
-            <i className="fas fa-cloud-check text-[10px]"></i>
-            <span className="text-[8px] font-bold uppercase tracking-widest">Base de Dados Online</span>
-          </div>
-        )}
       </div>
 
-      {/* Alerta de Novas Multas Pós-Login */}
       {showFineAlert && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
@@ -142,37 +130,28 @@ const AppContent: React.FC = () => {
                 <i className="fas fa-gavel"></i>
               </div>
               <div>
-                <h3 className="text-xl font-write uppercase tracking-tight">Novas Infrações Registradas</h3>
-                <p className="text-[10px] font-bold text-red-100 uppercase tracking-widest">Atenção Condutor: Revisão Obrigatória</p>
+                <h3 className="text-xl font-write uppercase tracking-tight">Novas Infrações</h3>
+                <p className="text-[10px] font-bold text-red-100 uppercase tracking-widest">Revisão Obrigatória</p>
               </div>
             </div>
             
             <div className="p-10 space-y-6 max-h-[400px] overflow-y-auto custom-scrollbar">
-              <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                Olá {currentUser.name}, identificamos novas multas atribuídas ao seu prontuário durante sua última ausência do sistema. Por favor, revise os detalhes abaixo:
-              </p>
-              
               <div className="space-y-4">
                 {unreadFineNotifications.map(n => (
                   <div key={n.id} className="bg-red-50 p-6 rounded-3xl border border-red-100">
                     <p className="text-[11px] text-red-800 font-bold leading-relaxed">{n.message}</p>
-                    <div className="mt-4 flex justify-between items-center text-[9px] font-write text-red-400 uppercase tracking-widest">
-                       <span>Data do Alerta: {new Date(n.timestamp).toLocaleDateString()}</span>
-                       <i className="fas fa-circle-exclamation"></i>
-                    </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="p-8 bg-slate-50 border-t border-slate-100 flex flex-col gap-3">
+            <div className="p-8 bg-slate-50 border-t border-slate-100">
               <button 
                 onClick={handleAcknowledgeFines}
-                className="w-full bg-slate-900 text-white py-5 rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl hover:bg-slate-800 transition-all active:scale-95"
+                className="w-full bg-slate-900 text-white py-5 rounded-2xl font-write uppercase text-xs tracking-widest shadow-xl"
               >
-                Estou ciente das infrações
+                Ciente
               </button>
-              <p className="text-[9px] text-slate-400 text-center font-bold uppercase">Ao clicar, os alertas serão movidos para o seu histórico de notificações.</p>
             </div>
           </div>
         </div>
