@@ -4,10 +4,12 @@ import { useFleet } from '../context/FleetContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 type ReportType = 'trips' | 'consumption' | 'fines' | 'management';
+type DetailType = 'maintenance' | 'operational' | 'total';
 
 const ReportsPage: React.FC = () => {
   const { vehicles, drivers, completedTrips, fines, maintenanceRecords, currentUser } = useFleet();
   const [activeReport, setActiveReport] = useState<ReportType>('trips');
+  const [detailModal, setDetailModal] = useState<DetailType | null>(null);
   
   const isAdmin = currentUser?.username === 'admin';
 
@@ -76,6 +78,63 @@ const ReportsPage: React.FC = () => {
   ].filter(d => d.value > 0), [managementSummary]);
 
   const COLORS = ['#10b981', '#6366f1'];
+
+  // Lógica de Detalhamento Analítico para o Modal
+  const detailedData = useMemo(() => {
+    const items: any[] = [];
+
+    if (detailModal === 'maintenance' || detailModal === 'total') {
+      filteredMaintenance.forEach(m => {
+        const v = vehicles.find(vh => vh.id === m.vehicleId);
+        items.push({
+          date: m.date,
+          vehicle: v ? `${v.plate} - ${v.model}` : 'N/A',
+          category: 'Manutenção',
+          description: m.serviceType,
+          value: m.cost
+        });
+      });
+    }
+
+    if (detailModal === 'operational' || detailModal === 'total') {
+      filteredTrips.forEach(t => {
+        const v = vehicles.find(vh => vh.id === t.vehicleId);
+        if (t.fuelExpense && t.fuelExpense > 0) {
+          items.push({
+            date: t.startTime.split('T')[0],
+            vehicle: v ? `${v.plate} - ${v.model}` : 'N/A',
+            category: 'Combustível (Viagem)',
+            description: t.destination,
+            value: t.fuelExpense
+          });
+        }
+        if (t.otherExpense && t.otherExpense > 0) {
+          items.push({
+            date: t.startTime.split('T')[0],
+            vehicle: v ? `${v.plate} - ${v.model}` : 'N/A',
+            category: 'Extras/Pedágio (Viagem)',
+            description: t.destination,
+            value: t.otherExpense
+          });
+        }
+      });
+    }
+
+    if (detailModal === 'total') {
+      filteredFines.forEach(f => {
+        const v = vehicles.find(vh => vh.id === f.vehicleId);
+        items.push({
+          date: f.date,
+          vehicle: v ? `${v.plate} - ${v.model}` : 'N/A',
+          category: 'Multa',
+          description: f.description,
+          value: f.value
+        });
+      });
+    }
+
+    return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [detailModal, filteredMaintenance, filteredTrips, filteredFines, vehicles]);
 
   // Lógica de Exportação CSV
   const handleExportCSV = () => {
@@ -317,21 +376,122 @@ const ReportsPage: React.FC = () => {
 
         {activeReport === 'management' && isAdmin && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Manutenção Preventiva/Corretiva</p>
+            <button 
+              onClick={() => setDetailModal('maintenance')}
+              className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 text-left hover:border-blue-300 transition-all group"
+            >
+               <div className="flex justify-between items-start mb-2">
+                 <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest">Manutenção Preventiva/Corretiva</p>
+                 <i className="fas fa-circle-plus text-slate-200 group-hover:text-blue-500 transition-colors"></i>
+               </div>
                <p className="text-3xl font-write text-slate-800">{formatCurrency(managementSummary.totalMaintCost)}</p>
-            </div>
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Despesas Operacionais (Viagens)</p>
+            </button>
+            <button 
+              onClick={() => setDetailModal('operational')}
+              className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 text-left hover:border-emerald-300 transition-all group"
+            >
+               <div className="flex justify-between items-start mb-2">
+                 <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest">Despesas Operacionais (Viagens)</p>
+                 <i className="fas fa-circle-plus text-slate-200 group-hover:text-emerald-500 transition-colors"></i>
+               </div>
                <p className="text-3xl font-write text-emerald-600">{formatCurrency(managementSummary.totalTripFuel + managementSummary.totalTripOther)}</p>
-            </div>
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-               <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest mb-2">Total Geral de Despesas</p>
+            </button>
+            <button 
+              onClick={() => setDetailModal('total')}
+              className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 text-left hover:border-red-300 transition-all group"
+            >
+               <div className="flex justify-between items-start mb-2">
+                 <p className="text-[10px] font-write text-slate-400 uppercase tracking-widest">Total Geral de Despesas</p>
+                 <i className="fas fa-circle-plus text-slate-200 group-hover:text-red-500 transition-colors"></i>
+               </div>
                <p className="text-3xl font-write text-red-600">{formatCurrency(managementSummary.totalMaintCost + managementSummary.totalFineCost + managementSummary.totalTripFuel + managementSummary.totalTripOther)}</p>
-            </div>
+            </button>
           </div>
         )}
       </div>
+
+      {/* Modal de Detalhamento Analítico */}
+      {detailModal && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-300">
+            <div className="p-10 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-write uppercase text-slate-800 tracking-tight">
+                  {detailModal === 'maintenance' ? 'Detalhamento de Manutenção' : 
+                   detailModal === 'operational' ? 'Detalhamento de Despesas de Viagem' : 
+                   'Consolidado Geral de Despesas'}
+                </h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Período: {new Date(startDate + 'T12:00:00').toLocaleDateString()} a {new Date(endDate + 'T12:00:00').toLocaleDateString()}</p>
+              </div>
+              <button 
+                onClick={() => setDetailModal(null)}
+                className="w-12 h-12 rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all flex items-center justify-center shadow-inner"
+              >
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-separate border-spacing-0">
+                  <thead className="sticky top-0 z-10">
+                    <tr className="bg-slate-50">
+                      <th className="px-6 py-4 text-[9px] font-write text-slate-400 uppercase tracking-widest border-b border-slate-100 rounded-tl-2xl">Data</th>
+                      <th className="px-6 py-4 text-[9px] font-write text-slate-400 uppercase tracking-widest border-b border-slate-100">Veículo</th>
+                      <th className="px-6 py-4 text-[9px] font-write text-slate-400 uppercase tracking-widest border-b border-slate-100">Categoria</th>
+                      <th className="px-6 py-4 text-[9px] font-write text-slate-400 uppercase tracking-widest border-b border-slate-100">Descrição / Local</th>
+                      <th className="px-6 py-4 text-[9px] font-write text-slate-400 uppercase tracking-widest border-b border-slate-100 rounded-tr-2xl text-right">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {detailedData.length > 0 ? detailedData.map((item, i) => (
+                      <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 text-[10px] font-bold text-slate-800 whitespace-nowrap">
+                          {new Date(item.date + 'T12:00:00').toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 text-[10px] font-bold text-slate-600">
+                          {item.vehicle}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-lg text-[8px] font-write uppercase border ${
+                            item.category === 'Manutenção' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                            item.category === 'Multa' ? 'bg-red-50 text-red-600 border-red-100' :
+                            'bg-emerald-50 text-emerald-600 border-emerald-100'
+                          }`}>
+                            {item.category}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-[10px] font-medium text-slate-500 truncate max-w-[200px]">
+                          {item.description}
+                        </td>
+                        <td className="px-6 py-4 text-xs font-write text-slate-900 text-right whitespace-nowrap">
+                          {formatCurrency(item.value)}
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={5} className="py-20 text-center text-slate-300 italic font-medium">Nenhuma despesa encontrada para este critério.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="p-10 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                Total do Filtro: <span className="text-slate-800 ml-2">{detailedData.length} registros</span>
+              </p>
+              <div className="text-right">
+                 <p className="text-[9px] font-write text-slate-400 uppercase tracking-widest mb-1">Montante Consolidado</p>
+                 <p className="text-2xl font-write text-slate-900">
+                   {formatCurrency(detailedData.reduce((sum, item) => sum + item.value, 0))}
+                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -64,8 +64,8 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsLoading(true);
     try {
       const results = await Promise.allSettled([
-        apiService.getVehicles(),
         apiService.getDrivers(),
+        apiService.getVehicles(),
         apiService.getActiveTrips(),
         apiService.getScheduledTrips(),
         apiService.getCompletedTrips(),
@@ -82,8 +82,8 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return res && res.status === 'fulfilled' ? (res as PromiseFulfilledResult<T>).value : defaultValue;
       }
 
-      setVehicles(getValue(0, []));
-      setDrivers(getValue(1, []));
+      setDrivers(getValue(0, []));
+      setVehicles(getValue(1, []));
       setActiveTrips(getValue(2, []));
       setScheduledTrips(getValue(3, []));
       setCompletedTrips(getValue(4, []));
@@ -113,10 +113,80 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     init();
   }, []);
 
+  // Monitoramento de saúde de pneus (Aviso: 2000km, Crítico: <= 0km)
   useEffect(() => {
-    if (auditLogs.length > 0) {
-      localStorage.setItem('fleet_audit_logs', JSON.stringify(auditLogs));
+    if (isLoading || vehicles.length === 0 || tireChanges.length === 0) return;
+
+    const threshold = 2000;
+    const newNotifications: AppNotification[] = [];
+
+    tireChanges.forEach(tc => {
+      if (!tc.nextChangeKm) return;
+      
+      const vehicle = vehicles.find(v => v.id === tc.vehicleId);
+      if (vehicle) {
+        const remaining = tc.nextChangeKm - vehicle.currentKm;
+        const isCritical = remaining <= 0;
+        const isWarning = remaining <= threshold;
+
+        if (isWarning) {
+          const type = isCritical ? 'critical' : 'warning';
+          const notificationId = `tire-alert-${tc.id}-${type}`;
+          const alreadyNotified = notifications.some(n => n.id === notificationId);
+
+          if (!alreadyNotified) {
+            newNotifications.push({
+              id: notificationId,
+              type: 'tire_alert',
+              title: isCritical ? '⚠️ TROCA DE PNEU CRÍTICA' : '🛠️ TROCA DE PNEU PRÓXIMA',
+              message: `O veículo ${vehicle.plate} está com o pneu (${tc.position}) ${isCritical ? 'VENCIDO' : 'próximo ao limite'}. Faltam ${isCritical ? 0 : remaining} km.`,
+              vehicleId: vehicle.id,
+              timestamp: new Date().toISOString(),
+              isRead: false
+            });
+          }
+        }
+      }
+    });
+
+    if (newNotifications.length > 0) {
+      setNotifications(prev => [...newNotifications, ...prev]);
     }
+  }, [vehicles, tireChanges, isLoading, notifications]);
+
+  // Monitoramento de nível de combustível (Alerta: < 10%)
+  useEffect(() => {
+    if (isLoading || vehicles.length === 0) return;
+
+    const newNotifications: AppNotification[] = [];
+
+    vehicles.forEach(vehicle => {
+      if (vehicle.fuelLevel < 10) {
+        const notificationId = `low-fuel-${vehicle.id}`;
+        // Só notifica se ainda não existir uma notificação para este veículo com este ID específico de alerta
+        const alreadyNotified = notifications.some(n => n.id === notificationId);
+
+        if (!alreadyNotified) {
+          newNotifications.push({
+            id: notificationId,
+            type: 'low_fuel',
+            title: '⛽ NÍVEL DE COMBUSTÍVEL BAIXO',
+            message: `O veículo ${vehicle.plate} está com nível crítico de combustível (${vehicle.fuelLevel}%). Favor abastecer imediatamente.`,
+            vehicleId: vehicle.id,
+            timestamp: new Date().toISOString(),
+            isRead: false
+          });
+        }
+      }
+    });
+
+    if (newNotifications.length > 0) {
+      setNotifications(prev => [...newNotifications, ...prev]);
+    }
+  }, [vehicles, isLoading, notifications]);
+
+  useEffect(() => {
+    localStorage.setItem('fleet_audit_logs', JSON.stringify(auditLogs));
   }, [auditLogs]);
 
   const login = async (user: string, pass: string) => {
@@ -294,7 +364,6 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!reason.trim()) throw new Error("O motivo do cancelamento é obrigatório.");
     setIsLoading(true);
     try {
-      await apiService.updateDriver(currentUser?.id || '', { activeVehicleId: undefined }); // Mock call
       const trip = activeTrips.find(t => t.id === id);
       if (trip) {
         const cancelledTrip: Trip = {
@@ -311,14 +380,18 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           userId: currentUser?.id || 'sys',
           userName: currentUser?.name || 'Sistema',
           action: 'CANCELLED',
-          description: `Viagem cancelada. Motivo: ${reason}`,
+          description: `Viagem cancelada pelo condutor. Motivo: ${reason}`,
           timestamp: new Date().toISOString()
         };
 
         setCompletedTrips(prev => [cancelledTrip, ...prev]);
         setAuditLogs(prev => [log, ...prev]);
         setActiveTrips(prev => prev.filter(t => t.id !== id));
+        // Fix: Properly update vehicles status using .map() to avoid reference error for 'v'
         setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE } : v));
+        
+        // Mock sync
+        await apiService.updateDriver(currentUser?.id || '', { activeVehicleId: undefined });
       }
     } finally {
       setIsLoading(false);
@@ -326,24 +399,6 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateTrip = async (id: string, updates: Partial<Trip>) => {
-    const trip = activeTrips.find(t => t.id === id);
-    if (!trip) return;
-
-    if (updates.destination && updates.destination !== trip.destination) {
-      const log: AuditLog = {
-        id: Math.random().toString(36).substr(2, 9),
-        entityId: id,
-        userId: currentUser?.id || 'sys',
-        userName: currentUser?.name || 'Sistema',
-        action: 'ROUTE_CHANGE',
-        description: `Alteração de destino: de "${trip.destination}" para "${updates.destination}"`,
-        previousValue: trip.destination,
-        newValue: updates.destination,
-        timestamp: new Date().toISOString()
-      };
-      setAuditLogs(prev => [log, ...prev]);
-    }
-
     setActiveTrips(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
 

@@ -11,6 +11,14 @@ export enum OccurrenceSeverity {
   HIGH = 'high'
 }
 
+export interface TireDetail {
+  position: 'FL' | 'FR' | 'RL' | 'RR'; 
+  brand: string;
+  model: string;
+  cost: number;
+  expectedLifespanKm: number;
+}
+
 export interface TireChange {
   id: string;
   vehicleId: string;
@@ -18,11 +26,13 @@ export interface TireChange {
   brand: string;
   model: string;
   km: number;
+  position?: string;
+  nextChangeKm?: number;
 }
 
 export interface AuditLog {
   id: string;
-  entityId: string; // ID da Viagem ou Veículo
+  entityId: string; 
   userId: string;
   userName: string;
   action: 'ROUTE_CHANGE' | 'CANCELLED' | 'KM_CORRECTION';
@@ -44,6 +54,12 @@ export interface Occurrence {
   resolved: boolean;
 }
 
+export interface MaintenanceServiceItem {
+  category: string;
+  cost: number;
+  notes?: string;
+}
+
 export interface MaintenanceRecord {
   id: string;
   vehicleId: string;
@@ -53,8 +69,10 @@ export interface MaintenanceRecord {
   cost: number;
   km: number;
   notes: string;
-  returnNotes?: string; // Observações de saída
-  categories?: string[]; // Campo para checklist de fechamento
+  returnNotes?: string; 
+  categories?: string[]; 
+  services?: MaintenanceServiceItem[];
+  tireDetails?: TireDetail[];
 }
 
 export interface Fine {
@@ -94,7 +112,7 @@ export interface Driver {
   passwordChanged?: boolean; 
   activeVehicleId?: string;
   avatar?: string;
-  initialPoints?: number; // Pontos que o motorista já possuía antes do sistema
+  initialPoints?: number; 
 }
 
 export interface Checklist {
@@ -108,10 +126,15 @@ export interface Checklist {
   waterChecked: boolean;
   tiresChecked: boolean;
   comments: string;
+  weeklyFuelAmount?: number; // Valor em R$ do abastecimento inicial da semana
+  weeklyFuelLiters?: number; // Litros do abastecimento inicial da semana
 }
+
+export type TripType = 'STANDARD' | 'WEEKLY_ROUTINE';
 
 export interface Trip {
   id: string;
+  type?: TripType; // Novo campo
   driverId: string;
   vehicleId: string;
   origin: string;
@@ -142,7 +165,7 @@ export interface ScheduledTrip extends Omit<Trip, 'startTime' | 'startKm'> {
 
 export interface AppNotification {
   id: string;
-  type: 'maintenance_km' | 'maintenance_date' | 'low_fuel' | 'new_fine' | 'occurrence' | 'schedule';
+  type: 'maintenance_km' | 'maintenance_date' | 'low_fuel' | 'new_fine' | 'occurrence' | 'schedule' | 'tire_alert';
   title: string;
   message: string;
   vehicleId: string;

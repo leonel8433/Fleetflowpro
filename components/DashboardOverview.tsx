@@ -19,6 +19,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
   const myActiveTrip = useMemo(() => activeTrips.find(t => String(t.driverId) === String(currentUser?.id)), [activeTrips, currentUser]);
   const activeVehicle = useMemo(() => vehicles.find(v => v.id === myActiveTrip?.vehicleId), [vehicles, myActiveTrip]);
   
+  const isWeekly = myActiveTrip?.type === 'WEEKLY_ROUTINE';
+
   const myScheduledTrips = useMemo(() => {
     if (isAdmin) return [];
     const curId = String(currentUser?.id).trim();
@@ -148,11 +150,13 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
       )}
 
       {!isAdmin && myActiveTrip && (
-        <div className="bg-slate-900 text-white rounded-[2.5rem] p-8 shadow-2xl relative animate-in fade-in zoom-in duration-500 border border-white/5">
+        <div className={`rounded-[2.5rem] p-8 shadow-2xl relative animate-in fade-in zoom-in duration-500 border ${isWeekly ? 'bg-slate-800 border-indigo-400/20' : 'bg-slate-900 border-white/5'} text-white`}>
           <div className="flex justify-between items-center mb-10">
-            <span className="bg-emerald-500 text-white text-[10px] font-write px-4 py-1.5 rounded-full animate-pulse tracking-widest">EM OPERAÇÃO</span>
+            <span className={`${isWeekly ? 'bg-indigo-600' : 'bg-emerald-500'} text-white text-[10px] font-write px-4 py-1.5 rounded-full animate-pulse tracking-widest uppercase`}>
+              {isWeekly ? 'Rotina Semanal Ativa' : 'Em Operação / Viagem'}
+            </span>
             <div className="flex flex-col items-end">
-               <span className="text-[9px] font-write text-blue-400 uppercase tracking-widest">Cronômetro</span>
+               <span className="text-[9px] font-write text-blue-400 uppercase tracking-widest">Tempo de Atividade</span>
                <span className="text-4xl font-mono font-bold tracking-wider leading-none">{elapsedTime}</span>
             </div>
           </div>
@@ -164,14 +168,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
                   <h3 className="text-xl font-write uppercase tracking-tight">{activeVehicle?.model}</h3>
                </div>
                <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Destino</p>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">{isWeekly ? 'Abrangência de Trabalho' : 'Destino'}</p>
                   <p className="text-sm font-bold truncate">{myActiveTrip.destination}</p>
                </div>
             </div>
 
             <div className="bg-white/5 p-6 rounded-3xl border border-white/10">
               <p className="text-[10px] text-blue-400 font-write uppercase tracking-widest mb-4 flex items-center gap-2">
-                <i className="fas fa-list-ul"></i> Eventos da Viagem
+                <i className="fas fa-list-ul"></i> Log de Atividades {isWeekly ? 'da Semana' : 'da Viagem'}
               </p>
               <div className="max-h-32 overflow-y-auto custom-scrollbar space-y-3">
                 {journeyEvents.length > 0 ? journeyEvents.map((ev, i) => (
@@ -180,22 +184,24 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
                     <p className="text-[11px] text-slate-300 font-medium italic">{ev}</p>
                   </div>
                 )) : (
-                  <p className="text-[10px] text-slate-500 italic">Sem ocorrências relatadas até o momento.</p>
+                  <p className="text-[10px] text-slate-500 italic">Nenhum evento registrado hoje.</p>
                 )}
               </div>
             </div>
           </div>
 
           <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-             <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(myActiveTrip.destination)}`, '_blank')} className="py-5 bg-blue-600 rounded-2xl font-write text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
-               <i className="fas fa-location-arrow"></i> GPS
-             </button>
+             {!isWeekly && (
+               <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(myActiveTrip.destination)}`, '_blank')} className="py-5 bg-blue-600 rounded-2xl font-write text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
+                 <i className="fas fa-location-arrow"></i> GPS
+               </button>
+             )}
              <button onClick={() => setShowOccurrenceModal(true)} className="py-5 bg-slate-700 rounded-2xl font-write text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
-               <i className="fas fa-comment-medical"></i> Relatar
+               <i className="fas fa-comment-medical"></i> Registrar Fato
              </button>
              <button onClick={() => setShowCancelModal(true)} className="py-5 border border-red-600/30 text-red-500 rounded-2xl font-write text-[10px] uppercase tracking-widest hover:bg-red-500/10 transition-colors">Cancelar</button>
              <button onClick={() => { setEndKm(activeVehicle?.currentKm || 0); setShowFinishModal(true); }} className="py-5 bg-emerald-600 rounded-2xl font-write text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
-               <i className="fas fa-flag-checkered"></i> Encerrar
+               <i className="fas fa-flag-checkered"></i> Encerrar {isWeekly ? 'Semana' : 'Viagem'}
              </button>
           </div>
         </div>
@@ -216,7 +222,12 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
                         <span className="text-[8px] font-bold text-slate-400 uppercase mt-1">Viagem</span>
                     </div>
                     <div className="min-w-0">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">{vehicles.find(v => v.id === trip.vehicleId)?.plate} • {vehicles.find(v => v.id === trip.vehicleId)?.model}</p>
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">{vehicles.find(v => v.id === trip.vehicleId)?.plate} • {vehicles.find(v => v.id === trip.vehicleId)?.model}</p>
+                          {trip.notes?.includes('[JUSTIFICATIVA RODÍZIO]') && (
+                            <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[8px] font-write uppercase border border-amber-200">Autorizada</span>
+                          )}
+                        </div>
                         <h4 className="text-lg font-bold text-slate-800 truncate">{trip.destination}</h4>
                     </div>
                   </div>
@@ -238,12 +249,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
                 </div>
                 
                 {trip.notes && (
-                  <div className="bg-white p-4 rounded-2xl border border-indigo-100 flex items-start gap-3 shadow-sm animate-pulse-slow">
-                    <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 shrink-0">
-                      <i className="fas fa-clipboard-list text-xs"></i>
+                  <div className={`p-4 rounded-2xl border flex items-start gap-3 shadow-sm animate-pulse-slow ${trip.notes.includes('[JUSTIFICATIVA RODÍZIO]') ? 'bg-amber-50 border-amber-200' : 'bg-white border-indigo-100'}`}>
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${trip.notes.includes('[JUSTIFICATIVA RODÍZIO]') ? 'bg-amber-100 text-amber-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                      <i className={`fas ${trip.notes.includes('[JUSTIFICATIVA RODÍZIO]') ? 'fa-shield-halved' : 'fa-clipboard-list'} text-xs`}></i>
                     </div>
                     <div>
-                      <p className="text-[9px] font-write text-indigo-400 uppercase tracking-widest mb-0.5">Destaque Administrativo:</p>
+                      <p className={`text-[9px] font-write uppercase tracking-widest mb-0.5 ${trip.notes.includes('[JUSTIFICATIVA RODÍZIO]') ? 'text-amber-500' : 'text-indigo-400'}`}>
+                        {trip.notes.includes('[JUSTIFICATIVA RODÍZIO]') ? 'Autorização de Rodízio:' : 'Destaque Administrativo:'}
+                      </p>
                       <p className="text-xs text-slate-700 font-bold leading-relaxed">"{trip.notes}"</p>
                     </div>
                   </div>
@@ -311,36 +324,38 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
       {showFinishModal && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div className="p-8 bg-emerald-600 text-white flex justify-between items-center">
-               <h3 className="text-xl font-write uppercase tracking-tight">Finalizar Viagem</h3>
+            <div className={`${isWeekly ? 'bg-indigo-600' : 'bg-emerald-600'} p-8 text-white flex justify-between items-center`}>
+               <h3 className="text-xl font-write uppercase tracking-tight">Finalizar {isWeekly ? 'Ciclo Semanal' : 'Viagem'}</h3>
                <i className="fas fa-flag-checkered text-2xl opacity-40"></i>
             </div>
             <div className="p-10 space-y-6">
               <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                <label className="block text-[10px] font-write text-slate-400 uppercase mb-3 text-center font-bold tracking-widest">KM Final Atual (Painel)</label>
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-3 text-center font-bold tracking-widest">Odômetro Final no {isWeekly ? 'Sábado/Retorno' : 'Destino'}</label>
                 <input type="number" autoFocus value={endKm} onChange={(e) => setEndKm(parseInt(e.target.value) || 0)} className="w-full px-5 py-5 bg-transparent outline-none font-write text-3xl text-slate-900 text-center" />
                 <p className="text-[9px] text-center text-slate-400 mt-2">KM Inicial: {myActiveTrip?.startKm} km</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                   <label className="text-[10px] font-write text-slate-400 uppercase tracking-widest ml-1">Combustível (R$)</label>
+                   <label className="text-[10px] font-write text-slate-400 uppercase tracking-widest ml-1">Despesas de Combustível (R$)</label>
                    <input type="number" value={fuelExpense} onChange={(e) => setFuelExpense(parseFloat(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" />
                 </div>
                 <div className="space-y-2">
-                   <label className="text-[10px] font-write text-slate-400 uppercase tracking-widest ml-1">Outros (R$)</label>
+                   <label className="text-[10px] font-write text-slate-400 uppercase tracking-widest ml-1">Extras / Pedágios (R$)</label>
                    <input type="number" value={otherExpense} onChange={(e) => setOtherExpense(parseFloat(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" />
                 </div>
               </div>
 
               <div className="space-y-2">
-                 <label className="text-[10px] font-write text-slate-400 uppercase tracking-widest ml-1">Notas Finais</label>
-                 <textarea value={expenseNotes} onChange={(e) => setExpenseNotes(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm min-h-[80px]" placeholder="Ex: Comprovantes anexados, observações do trajeto..." />
+                 <label className="text-[10px] font-write text-slate-400 uppercase tracking-widest ml-1">Relatório de Encerramento</label>
+                 <textarea value={expenseNotes} onChange={(e) => setExpenseNotes(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm min-h-[80px]" placeholder="Descreva como foi a semana ou os principais pontos da viagem..." />
               </div>
 
               <div className="flex gap-4 pt-4">
                 <button onClick={() => setShowFinishModal(false)} className="flex-1 py-5 text-slate-400 font-write uppercase text-[10px]">Voltar</button>
-                <button onClick={confirmFinish} className="flex-[2] py-5 bg-emerald-600 text-white rounded-2xl font-write uppercase text-xs shadow-xl active:scale-95 transition-all">Encerrar Agora</button>
+                <button onClick={confirmFinish} className={`flex-[2] py-5 ${isWeekly ? 'bg-indigo-600' : 'bg-emerald-600'} text-white rounded-2xl font-write uppercase text-xs shadow-xl active:scale-95 transition-all`}>
+                   Encerrar Agora
+                </button>
               </div>
             </div>
           </div>
