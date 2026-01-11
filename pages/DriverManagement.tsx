@@ -247,6 +247,15 @@ const DriverManagement: React.FC = () => {
               <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Data</label><input type="date" required value={newFine.date} onChange={(e) => setNewFine({ ...newFine, date: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none" /></div>
               <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Valor (R$)</label><input type="number" step="0.01" required value={newFine.value} onChange={(e) => setNewFine({ ...newFine, value: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none" /></div>
               <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Pontos</label><input type="number" required value={newFine.points} onChange={(e) => setNewFine({ ...newFine, points: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none" /></div>
+              <div className="lg:col-span-3">
+                <label className="block text-[10px] text-slate-400 uppercase mb-2">Descrição / Motivo da Multa</label>
+                <textarea 
+                  placeholder="Ex: Excesso de velocidade na BR-101, conversão proibida, estacionamento irregular..." 
+                  value={newFine.description} 
+                  onChange={(e) => setNewFine({ ...newFine, description: e.target.value })} 
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none min-h-[80px]"
+                />
+              </div>
               <div className="flex items-end"><button type="submit" className="w-full bg-red-600 text-white p-4 rounded-2xl font-write uppercase text-[10px] shadow-lg">Gravar Multa</button></div>
           </form>
         </div>

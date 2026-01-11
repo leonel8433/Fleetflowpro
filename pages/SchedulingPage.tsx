@@ -5,7 +5,7 @@ import { ScheduledTrip, VehicleStatus, Vehicle, AuditLog } from '../types';
 import { checkSPRodizio, getRodizioDayLabel, isLocationSaoPaulo } from '../utils/trafficRules';
 
 const SchedulingPage: React.FC = () => {
-  const { drivers, vehicles, scheduledTrips, activeTrips, addScheduledTrip, updateScheduledTrip, deleteScheduledTrip, currentUser } = useFleet();
+  const { drivers, vehicles, scheduledTrips, activeTrips, completedTrips, addScheduledTrip, updateScheduledTrip, deleteScheduledTrip, currentUser } = useFleet();
   const [showForm, setShowForm] = useState(false);
   const [editingTripId, setEditingTripId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -88,20 +88,28 @@ const SchedulingPage: React.FC = () => {
     // 1. Manutenção - BLOQUEIO PRIORITÁRIO
     if (vehicle.status === VehicleStatus.MAINTENANCE) return 'MAINTENANCE';
     
-    // 2. Conflito de Hoje
-    const today = new Date().toISOString().split('T')[0];
-    if (newSchedule.scheduledDate === today) {
-      const isActive = activeTrips.some(t => t.vehicleId === vehicle.id);
-      if (isActive) return 'ACTIVE_TRIP';
-    }
-    
-    // 3. Conflito de Agenda (Mesmo veículo no mesmo dia)
+    // 2. Conflito de Agenda (Verifica agendamentos existentes na mesma data)
     const isScheduled = scheduledTrips.some(trip => 
       trip.vehicleId === vehicle.id && 
       trip.scheduledDate === newSchedule.scheduledDate && 
       trip.id !== editingTripId
     );
     if (isScheduled) return 'ALREADY_SCHEDULED';
+
+    // 3. Conflito de Operação (Verifica se já existe viagem ativa ou concluída hoje para este veículo)
+    const selectedDay = newSchedule.scheduledDate;
+    
+    const hasActiveTrip = activeTrips.some(trip => 
+      trip.vehicleId === vehicle.id && 
+      trip.startTime.split('T')[0] === selectedDay
+    );
+    if (hasActiveTrip) return 'ACTIVE_TRIP';
+
+    const hasCompletedTrip = completedTrips.some(trip => 
+      trip.vehicleId === vehicle.id && 
+      trip.startTime.split('T')[0] === selectedDay
+    );
+    if (hasCompletedTrip) return 'ALREADY_USED_TODAY';
     
     // 4. Rodízio São Paulo
     if (isDestSaoPaulo) {
@@ -111,7 +119,7 @@ const SchedulingPage: React.FC = () => {
     }
     
     return null;
-  }, [newSchedule.scheduledDate, editingTripId, isDestSaoPaulo, scheduledTrips, activeTrips]);
+  }, [newSchedule.scheduledDate, editingTripId, isDestSaoPaulo, scheduledTrips, activeTrips, completedTrips]);
 
   const restrictionInfo = useMemo(() => {
     if (!newSchedule.scheduledDate || !newSchedule.vehicleId) return null;
@@ -120,8 +128,9 @@ const SchedulingPage: React.FC = () => {
       const status = getVehicleConflictStatus(vehicle);
       switch (status) {
         case 'MAINTENANCE': return { type: 'MAINTENANCE', message: `BLOQUEADO: O veículo ${vehicle.plate} está em MANUTENÇÃO.` };
-        case 'ACTIVE_TRIP': return { type: 'CONFLICT', message: `CONFLITO: Veículo em uso operacional agora.` };
-        case 'ALREADY_SCHEDULED': return { type: 'CONFLICT', message: `CONFLITO: Este veículo já possui viagem agendada para este dia.` };
+        case 'ACTIVE_TRIP': return { type: 'CONFLICT', message: `CONFLITO: Este veículo já está em uso operacional neste dia.` };
+        case 'ALREADY_SCHEDULED': return { type: 'CONFLICT', message: `CONFLITO: Já existe um agendamento para este veículo nesta data.` };
+        case 'ALREADY_USED_TODAY': return { type: 'CONFLICT', message: `CONFLITO: Este veículo já realizou uma jornada hoje e não pode ser reatribuído para novo local.` };
         case 'RODIZIO': return { type: 'RODIZIO', message: `RODÍZIO SP: ${getRodizioDayLabel(vehicle.plate)}.` };
         default: break;
       }
@@ -142,7 +151,7 @@ const SchedulingPage: React.FC = () => {
     }
 
     if (restrictionInfo?.type === 'CONFLICT') {
-      alert(`ERRO: ${restrictionInfo.message}`);
+      alert(`ERRO DE AGENDA: ${restrictionInfo.message}`);
       return;
     }
 
@@ -231,8 +240,7 @@ const SchedulingPage: React.FC = () => {
   };
 
   const isSubmitDisabled = 
-    (restrictionInfo && restrictionInfo.type === 'MAINTENANCE') || 
-    (restrictionInfo && restrictionInfo.type === 'CONFLICT') || 
+    (restrictionInfo && (restrictionInfo.type === 'MAINTENANCE' || restrictionInfo.type === 'CONFLICT')) || 
     (restrictionInfo?.type === 'RODIZIO' && !isAdmin);
 
   return (
@@ -261,7 +269,6 @@ const SchedulingPage: React.FC = () => {
           </div>
           
           <form onSubmit={handleAttemptSave} className="space-y-8">
-            {/* Linha 1: Data, Motorista, Veículo */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Data</label><input type="date" required value={newSchedule.scheduledDate} onChange={(e) => setNewSchedule({ ...newSchedule, scheduledDate: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" /></div>
               <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Motorista</label><select required value={newSchedule.driverId} onChange={(e) => setNewSchedule({ ...newSchedule, driverId: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" disabled={!isAdmin}><option value="">Selecione...</option>{drivers.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}</select></div>
@@ -271,13 +278,13 @@ const SchedulingPage: React.FC = () => {
                   <option value="">Selecione...</option>
                   {vehicles.map(v => {
                     const conflictStatus = getVehicleConflictStatus(v);
-                    const isDisabled = conflictStatus === 'MAINTENANCE' || conflictStatus === 'ALREADY_SCHEDULED' || conflictStatus === 'ACTIVE_TRIP';
+                    const isDisabled = !!conflictStatus && conflictStatus !== 'RODIZIO';
                     return (
                       <option key={v.id} value={v.id} disabled={isDisabled}>
                         {v.plate} - {v.model} 
                         {conflictStatus === 'MAINTENANCE' ? ' (MANUTENÇÃO)' : ''}
                         {conflictStatus === 'ALREADY_SCHEDULED' ? ' (INDISPONÍVEL NESTA DATA)' : ''}
-                        {conflictStatus === 'ACTIVE_TRIP' ? ' (EM USO AGORA)' : ''}
+                        {conflictStatus === 'ACTIVE_TRIP' || conflictStatus === 'ALREADY_USED_TODAY' ? ' (EM USO NESTE DIA)' : ''}
                       </option>
                     );
                   })}
@@ -285,7 +292,6 @@ const SchedulingPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Linha 2: Estado e Cidade */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-[10px] text-slate-400 uppercase mb-2">Estado</label>
@@ -303,7 +309,6 @@ const SchedulingPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Linha 3: Origem e Destino */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Origem</label><input required placeholder="Local de Saída" value={newSchedule.origin} onChange={(e) => setNewSchedule({ ...newSchedule, origin: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" /></div>
               <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Destino</label><input required placeholder="Endereço de Chegada" value={newSchedule.destination} onChange={(e) => setNewSchedule({ ...newSchedule, destination: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" /></div>
@@ -369,7 +374,6 @@ const SchedulingPage: React.FC = () => {
                 <p className="text-[10px] text-slate-400 font-medium italic">{trip.city}, {trip.state}</p>
               </div>
 
-              {/* Coluna do Motorista Adicionada */}
               <div className="hidden lg:block min-w-[200px] px-6 border-l border-slate-50">
                 <p className="text-[8px] font-write text-slate-300 uppercase tracking-widest mb-1">Motorista Escalado</p>
                 <p className="text-xs font-bold text-slate-600 truncate">{driver?.name || 'Não identificado'}</p>
