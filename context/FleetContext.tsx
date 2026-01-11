@@ -27,7 +27,7 @@ interface FleetContextType {
   addScheduledTrip: (trip: ScheduledTrip) => Promise<void>;
   updateScheduledTrip: (id: string, updates: Partial<ScheduledTrip>) => Promise<void>;
   deleteScheduledTrip: (id: string) => Promise<void>;
-  endTrip: (tripId: string, currentKm: number, endTime: string, expenses?: any) => Promise<void>;
+  endTrip: (tripId: string, currentKm: number, endTime: string, fuelLevel: number, expenses?: any) => Promise<void>;
   cancelTrip: (tripId: string, reason: string) => Promise<void>;
   addFine: (fine: Fine) => Promise<void>;
   deleteFine: (id: string) => Promise<void>;
@@ -113,7 +113,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     init();
   }, []);
 
-  // Monitoramento de saúde de pneus (Aviso: 2000km, Crítico: <= 0km)
+  // Monitoramento Proativo de Pneus
   useEffect(() => {
     if (isLoading || vehicles.length === 0 || tireChanges.length === 0) return;
 
@@ -138,8 +138,8 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             newNotifications.push({
               id: notificationId,
               type: 'tire_alert',
-              title: isCritical ? '⚠️ TROCA DE PNEU CRÍTICA' : '🛠️ TROCA DE PNEU PRÓXIMA',
-              message: `O veículo ${vehicle.plate} está com o pneu (${tc.position}) ${isCritical ? 'VENCIDO' : 'próximo ao limite'}. Faltam ${isCritical ? 0 : remaining} km.`,
+              title: isCritical ? '⚠️ TROCA DE PNEU CRÍTICA' : '🛠️ MANUTENÇÃO PREVENTIVA: PNEU',
+              message: `O pneu (${tc.position}) do veículo ${vehicle.plate} está ${isCritical ? 'VENCIDO' : `próximo ao limite. Restam ${remaining}km para a troca prevista.`}`,
               vehicleId: vehicle.id,
               timestamp: new Date().toISOString(),
               isRead: false
@@ -154,24 +154,20 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [vehicles, tireChanges, isLoading, notifications]);
 
-  // Monitoramento de nível de combustível (Alerta: < 10%)
+  // Monitoramento de Combustível
   useEffect(() => {
     if (isLoading || vehicles.length === 0) return;
-
     const newNotifications: AppNotification[] = [];
-
     vehicles.forEach(vehicle => {
       if (vehicle.fuelLevel < 10) {
         const notificationId = `low-fuel-${vehicle.id}`;
-        // Só notifica se ainda não existir uma notificação para este veículo com este ID específico de alerta
         const alreadyNotified = notifications.some(n => n.id === notificationId);
-
         if (!alreadyNotified) {
           newNotifications.push({
             id: notificationId,
             type: 'low_fuel',
-            title: '⛽ NÍVEL DE COMBUSTÍVEL BAIXO',
-            message: `O veículo ${vehicle.plate} está com nível crítico de combustível (${vehicle.fuelLevel}%). Favor abastecer imediatamente.`,
+            title: '⛽ COMBUSTÍVEL CRÍTICO',
+            message: `Veículo ${vehicle.plate} com nível de combustível em ${vehicle.fuelLevel}%.`,
             vehicleId: vehicle.id,
             timestamp: new Date().toISOString(),
             isRead: false
@@ -179,7 +175,6 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
     });
-
     if (newNotifications.length > 0) {
       setNotifications(prev => [...newNotifications, ...prev]);
     }
@@ -192,7 +187,6 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const login = async (user: string, pass: string) => {
     setIsLoading(true);
     const normalizedUser = user.toLowerCase().trim();
-    
     try {
       const driver = await apiService.login(normalizedUser, pass);
       if (driver) {
@@ -204,16 +198,13 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (e) {
       console.warn("API Login failed, trying local fallback:", e);
     }
-
     const localDriver = drivers.find(d => d.username.toLowerCase() === normalizedUser);
-
     if (localDriver && localDriver.password === pass) {
       setCurrentUser(localDriver);
       sessionStorage.setItem('fleet_current_user', JSON.stringify(localDriver));
       setIsLoading(false);
       return true;
     }
-
     setIsLoading(false);
     return false;
   };
@@ -227,23 +218,11 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!currentUser) return;
     setIsLoading(true);
     try {
-      const updates = { 
-        password: newPass, 
-        passwordChanged: true, 
-        username: currentUser.username 
-      };
+      const updates = { password: newPass, passwordChanged: true, username: currentUser.username };
       await apiService.updateDriver(currentUser.id, updates);
       const updated = { ...currentUser, ...updates };
       setCurrentUser(updated);
-      
-      setDrivers(prev => {
-        const index = prev.findIndex(d => d.id === currentUser.id);
-        if (index !== -1) {
-          return prev.map(d => d.id === currentUser.id ? updated : d);
-        }
-        return [...prev, updated]; 
-      });
-      
+      setDrivers(prev => prev.map(d => d.id === currentUser.id ? updated : d));
       sessionStorage.setItem('fleet_current_user', JSON.stringify(updated));
     } finally {
       setIsLoading(false);
@@ -331,13 +310,13 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await apiService.startTrip(trip, checklist);
       setActiveTrips(prev => [...prev, trip]);
       setChecklists(prev => [...prev, checklist]);
-      setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.IN_USE, lastChecklist: checklist } : v));
+      setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.IN_USE, lastChecklist: checklist, fuelLevel: checklist.fuelLevel } : v));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const endTrip = async (tripId: string, currentKm: number, endTime: string, expenses: any) => {
+  const endTrip = async (tripId: string, currentKm: number, endTime: string, fuelLevel: number, expenses: any) => {
     setIsLoading(true);
     try {
       await apiService.endTrip(tripId, currentKm, endTime, expenses);
@@ -353,7 +332,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
         setCompletedTrips(prev => [finishedTrip, ...prev]);
         setActiveTrips(prev => prev.filter(t => t.id !== tripId));
-        setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm } : v));
+        setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE, currentKm, fuelLevel } : v));
       }
     } finally {
       setIsLoading(false);
@@ -361,7 +340,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const cancelTrip = async (id: string, reason: string) => {
-    if (!reason.trim()) throw new Error("O motivo do cancelamento é obrigatório.");
+    if (!reason.trim()) throw new Error("Motivo obrigatório.");
     setIsLoading(true);
     try {
       const trip = activeTrips.find(t => t.id === id);
@@ -373,24 +352,19 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           cancelledBy: currentUser?.name || 'Sistema',
           endTime: new Date().toISOString()
         };
-
         const log: AuditLog = {
           id: Math.random().toString(36).substr(2, 9),
           entityId: id,
           userId: currentUser?.id || 'sys',
           userName: currentUser?.name || 'Sistema',
           action: 'CANCELLED',
-          description: `Viagem cancelada pelo condutor. Motivo: ${reason}`,
+          description: `Viagem cancelada: ${reason}`,
           timestamp: new Date().toISOString()
         };
-
         setCompletedTrips(prev => [cancelledTrip, ...prev]);
         setAuditLogs(prev => [log, ...prev]);
         setActiveTrips(prev => prev.filter(t => t.id !== id));
-        // Fix: Properly update vehicles status using .map() to avoid reference error for 'v'
         setVehicles(prev => prev.map(v => v.id === trip.vehicleId ? { ...v, status: VehicleStatus.AVAILABLE } : v));
-        
-        // Mock sync
         await apiService.updateDriver(currentUser?.id || '', { activeVehicleId: undefined });
       }
     } finally {
@@ -435,13 +409,12 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addFine = async (f: Fine) => {
     await apiService.saveFine(f);
     setFines(prev => [f, ...prev]);
-    
     const vehicle = vehicles.find(v => v.id === f.vehicleId);
     const notification: AppNotification = {
       id: Math.random().toString(36).substr(2, 9),
       type: 'new_fine',
       title: 'Nova Multa Atribuída',
-      message: `Data: ${new Date(f.date).toLocaleDateString()}. Valor: R$ ${f.value.toFixed(2)}. Veículo: ${vehicle?.plate}. Descrição: ${f.description}`,
+      message: `Veículo: ${vehicle?.plate}. Descrição: ${f.description}`,
       vehicleId: f.vehicleId,
       driverId: f.driverId,
       timestamp: new Date().toISOString(),
@@ -490,9 +463,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const resetDatabase = useCallback(() => {
     if (window.confirm("Isso apagará apenas seu cache local de dados. Deseja continuar?")) {
-      Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('fleet_cache_')) localStorage.removeItem(key);
-      });
+      Object.keys(localStorage).forEach(key => { if (key.startsWith('fleet_cache_')) localStorage.removeItem(key); });
       localStorage.removeItem('fleet_audit_logs');
       window.location.reload();
     }

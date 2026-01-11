@@ -52,6 +52,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
   const [occurrenceText, setOccurrenceText] = useState('');
   
   const [endKm, setEndKm] = useState<number>(0);
+  const [endFuel, setEndFuel] = useState<number>(100);
   const [fuelExpense, setFuelExpense] = useState<number>(0);
   const [otherExpense, setOtherExpense] = useState<number>(0);
   const [expenseNotes, setExpenseNotes] = useState<string>('');
@@ -112,7 +113,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
         alert("O KM final não pode ser menor que o KM inicial.");
         return;
       }
-      endTrip(myActiveTrip.id, endKm, new Date().toISOString(), {
+      endTrip(myActiveTrip.id, endKm, new Date().toISOString(), endFuel, {
         fuel: fuelExpense,
         other: otherExpense,
         notes: expenseNotes.trim()
@@ -160,6 +161,18 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
                <span className="text-4xl font-mono font-bold tracking-wider leading-none">{elapsedTime}</span>
             </div>
           </div>
+
+          {activeVehicle && activeVehicle.fuelLevel < 10 && (
+            <div className="mb-6 p-4 bg-red-600/30 border border-red-500 rounded-2xl flex items-center gap-4 animate-pulse">
+               <div className="w-10 h-10 bg-red-600 text-white rounded-xl flex items-center justify-center shadow-lg">
+                  <i className="fas fa-gas-pump"></i>
+               </div>
+               <div>
+                  <p className="text-[10px] font-write uppercase tracking-widest text-red-100">Alerta de Combustível Crítico</p>
+                  <p className="text-xs font-bold text-white uppercase">Nível atual: {activeVehicle.fuelLevel}%. Recomenda-se abastecimento imediato.</p>
+               </div>
+            </div>
+          )}
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="space-y-4">
@@ -200,7 +213,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
                <i className="fas fa-comment-medical"></i> Registrar Fato
              </button>
              <button onClick={() => setShowCancelModal(true)} className="py-5 border border-red-600/30 text-red-500 rounded-2xl font-write text-[10px] uppercase tracking-widest hover:bg-red-500/10 transition-colors">Cancelar</button>
-             <button onClick={() => { setEndKm(activeVehicle?.currentKm || 0); setShowFinishModal(true); }} className="py-5 bg-emerald-600 rounded-2xl font-write text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
+             <button onClick={() => { setEndKm(activeVehicle?.currentKm || 0); setEndFuel(activeVehicle?.fuelLevel || 100); setShowFinishModal(true); }} className="py-5 bg-emerald-600 rounded-2xl font-write text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
                <i className="fas fa-flag-checkered"></i> Encerrar {isWeekly ? 'Semana' : 'Viagem'}
              </button>
           </div>
@@ -333,6 +346,23 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
                 <label className="block text-[10px] font-write text-slate-400 uppercase mb-3 text-center font-bold tracking-widest">Odômetro Final no {isWeekly ? 'Sábado/Retorno' : 'Destino'}</label>
                 <input type="number" autoFocus value={endKm} onChange={(e) => setEndKm(parseInt(e.target.value) || 0)} className="w-full px-5 py-5 bg-transparent outline-none font-write text-3xl text-slate-900 text-center" />
                 <p className="text-[9px] text-center text-slate-400 mt-2">KM Inicial: {myActiveTrip?.startKm} km</p>
+              </div>
+
+              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                <label className="block text-[10px] font-write text-slate-400 uppercase mb-4 text-center font-bold tracking-widest">Nível de Combustível Final: {endFuel}%</label>
+                <div className="flex items-center gap-4">
+                  <i className="fas fa-gas-pump text-slate-400"></i>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    step="5" 
+                    value={endFuel} 
+                    onChange={(e) => setEndFuel(parseInt(e.target.value))} 
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                  <i className="fas fa-gas-pump text-blue-600"></i>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

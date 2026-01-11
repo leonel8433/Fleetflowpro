@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useFleet } from '../context/FleetContext';
 
 const HistoryPage: React.FC = () => {
-  const { completedTrips, vehicles, drivers, currentUser, auditLogs } = useFleet();
+  const { completedTrips, vehicles, drivers, currentUser, auditLogs, checklists } = useFleet();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeView, setActiveView] = useState<'trips' | 'audit'>('trips');
 
@@ -42,20 +42,21 @@ const HistoryPage: React.FC = () => {
     window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${wps}&travelmode=driving`, '_blank');
   };
 
-  // Helper para extrair observações específicas do checklist que foram salvas no campo observations
   const extractChecklistObs = (obs: string) => {
-    if (!obs) return { departure: '', arrival: '', journey: '' };
+    if (!obs) return { departure: '', arrival: '', journey: '', damage: '' };
     const parts = obs.split('\n\nDIÁRIO DE BORDO:\n');
     const logs = parts[1] || '';
     const topPart = parts[0] || '';
     
     const departureMatch = topPart.match(/OBS_SAIDA: (.*?)(?= \| |$)/);
     const arrivalMatch = topPart.match(/OBS_CHEGADA: (.*?)(?= \| |$)/);
+    const damageMatch = topPart.match(/AVARIA: (.*?)(?= \| |$)/);
     
     return {
       departure: departureMatch ? departureMatch[1] : '',
       arrival: arrivalMatch ? arrivalMatch[1] : '',
-      journey: logs || topPart.replace(/OBS_SAIDA: .*? \| /g, '').replace(/OBS_CHEGADA: .*?/g, '').trim()
+      damage: damageMatch ? damageMatch[1] : '',
+      journey: logs || topPart.replace(/OBS_SAIDA: .*? \| /g, '').replace(/OBS_CHEGADA: .*?/g, '').replace(/AVARIA: .*? \| /g, '').trim()
     };
   };
 
@@ -105,8 +106,13 @@ const HistoryPage: React.FC = () => {
               const vehicle = vehicles.find(v => v.id === trip.vehicleId);
               const driver = drivers.find(d => d.id === trip.driverId);
               const dateObj = new Date(trip.startTime);
-              const totalExpenses = (trip.fuelExpense || 0) + (trip.otherExpense || 0);
-              const { departure, arrival, journey } = extractChecklistObs(trip.observations || '');
+              const { departure, arrival, journey, damage } = extractChecklistObs(trip.observations || '');
+              
+              // Busca o checklist que contém a foto/detalhes da avaria
+              const tripChecklist = checklists.find(c => 
+                c.vehicleId === trip.vehicleId && 
+                Math.abs(new Date(c.timestamp).getTime() - new Date(trip.startTime).getTime()) < 10000
+              );
 
               return (
                 <div key={trip.id} className={`bg-white p-6 rounded-3xl shadow-sm border group hover:shadow-md transition-all flex flex-col gap-6 ${trip.isCancelled ? 'border-red-100 opacity-90' : 'border-slate-100'}`}>
@@ -155,40 +161,43 @@ const HistoryPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {trip.isCancelled && (
-                    <div className="pt-4 border-t border-red-100 bg-red-50/30 p-5 rounded-2xl">
-                       <div className="flex items-center gap-3 mb-2">
-                          <i className="fas fa-ban text-red-500"></i>
-                          <p className="text-[10px] font-write text-red-700 uppercase tracking-widest">Motivo do Cancelamento (Obrigatório)</p>
-                       </div>
-                       <p className="text-xs text-red-800 font-medium italic leading-relaxed">
-                         "{trip.cancellationReason}"
-                       </p>
-                       <p className="text-[9px] text-red-400 font-bold uppercase mt-3">Cancelado por: {trip.cancelledBy} em {new Date(trip.endTime || '').toLocaleString()}</p>
-                    </div>
-                  )}
-
                   {!trip.isCancelled && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-50">
-                       <div className="bg-slate-50 p-4 rounded-2xl space-y-3">
+                       <div className="bg-slate-50 p-4 rounded-2xl space-y-4">
                           <div className="flex items-center gap-2">
                              <i className="fas fa-file-signature text-blue-500 text-[10px]"></i>
-                             <p className="text-[9px] font-write text-slate-400 uppercase tracking-widest">Diário Técnico (Saída/Chegada)</p>
+                             <p className="text-[9px] font-write text-slate-400 uppercase tracking-widest">Inspeção Técnica de Saída</p>
                           </div>
+                          
+                          {(damage || tripChecklist?.damagePhoto) && (
+                            <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 space-y-3">
+                               <p className="text-[9px] font-bold text-amber-700 uppercase">Avaria Registrada pelo Motorista:</p>
+                               <div className="flex gap-4 items-start">
+                                  {tripChecklist?.damagePhoto && (
+                                    <div className="w-24 h-24 rounded-lg overflow-hidden border-2 border-white shadow-sm shrink-0">
+                                      <img src={tripChecklist.damagePhoto} className="w-full h-full object-cover cursor-zoom-in" alt="Foto da avaria" onClick={() => window.open(tripChecklist.damagePhoto, '_blank')} />
+                                    </div>
+                                  )}
+                                  <p className="text-[10px] text-amber-900 italic font-medium leading-relaxed">
+                                    "{damage || 'Avaria identificada sem descrição textual.'}"
+                                  </p>
+                               </div>
+                            </div>
+                          )}
+
                           <div className="space-y-2">
                              {departure && (
                                <div className="bg-white p-3 rounded-xl border border-slate-100">
-                                  <p className="text-[8px] font-bold text-blue-600 uppercase">Saída:</p>
+                                  <p className="text-[8px] font-bold text-blue-600 uppercase">Notas de Saída:</p>
                                   <p className="text-[10px] text-slate-600 italic leading-relaxed">"{departure}"</p>
                                 </div>
                              )}
                              {arrival && (
                                <div className="bg-white p-3 rounded-xl border border-slate-100">
-                                  <p className="text-[8px] font-bold text-emerald-600 uppercase">Retorno:</p>
+                                  <p className="text-[8px] font-bold text-emerald-600 uppercase">Relatório de Encerramento:</p>
                                   <p className="text-[10px] text-slate-600 italic leading-relaxed">"{arrival}"</p>
                                 </div>
                              )}
-                             {!departure && !arrival && <p className="text-[10px] text-slate-300 italic">Sem observações técnicas registradas.</p>}
                           </div>
                        </div>
 
@@ -196,16 +205,16 @@ const HistoryPage: React.FC = () => {
                           <div className="bg-slate-50 p-4 rounded-2xl flex flex-wrap gap-4 items-center">
                             <div className="flex items-center gap-2">
                                <i className="fas fa-gas-pump text-slate-300"></i>
-                               <span className="text-[10px] font-bold text-slate-400 uppercase">Abastecimento: <b className="text-slate-700 ml-1">R$ {trip.fuelExpense?.toFixed(2)}</b></span>
+                               <span className="text-[10px] font-bold text-slate-400 uppercase">Combustível: <b className="text-slate-700 ml-1">{tripChecklist?.fuelLevel || 'N/D'}%</b></span>
                             </div>
                             <div className="flex items-center gap-2">
-                               <i className="fas fa-file-invoice-dollar text-slate-300"></i>
-                               <span className="text-[10px] font-bold text-slate-400 uppercase">Extras: <b className="text-slate-700 ml-1">R$ {trip.otherExpense?.toFixed(2)}</b></span>
+                               <i className="fas fa-money-bill-transfer text-slate-300"></i>
+                               <span className="text-[10px] font-bold text-slate-400 uppercase">Despesas: <b className="text-slate-700 ml-1">R$ {((trip.fuelExpense || 0) + (trip.otherExpense || 0)).toFixed(2)}</b></span>
                             </div>
                           </div>
                           {journey && (
                             <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
-                               <p className="text-[9px] font-write text-amber-600 uppercase mb-2 tracking-widest">Ocorrências de Trajeto</p>
+                               <p className="text-[9px] font-write text-amber-600 uppercase mb-2 tracking-widest">Diário de Bordo / Eventos</p>
                                <p className="text-[10px] text-amber-800 italic leading-relaxed whitespace-pre-line">{journey}</p>
                             </div>
                           )}
@@ -222,13 +231,11 @@ const HistoryPage: React.FC = () => {
           )}
         </div>
       ) : (
-        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-          {auditLogs.length > 0 ? auditLogs.map(log => (
+        <div className="space-y-4">
+          {auditLogs.map(log => (
             <div key={log.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-start gap-5">
                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm ${
-                 log.action === 'CANCELLED' ? 'bg-red-50 text-red-600 border-red-100' : 
-                 log.action === 'ROUTE_CHANGE' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                 'bg-blue-50 text-blue-600 border-blue-100'
+                 log.action === 'CANCELLED' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'
                }`}>
                  <i className={`fas ${log.action === 'CANCELLED' ? 'fa-ban' : 'fa-route'}`}></i>
                </div>
@@ -237,20 +244,12 @@ const HistoryPage: React.FC = () => {
                    <h4 className="text-xs font-write text-slate-800 uppercase tracking-tight">{log.userName} executou {log.action}</h4>
                    <span className="text-[9px] font-bold text-slate-400 uppercase">{new Date(log.timestamp).toLocaleString()}</span>
                  </div>
-                 <p className="text-xs text-slate-600 font-medium leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 italic">
+                 <p className="text-xs text-slate-600 font-medium italic bg-slate-50 p-3 rounded-xl">
                    {log.description}
                  </p>
-                 <div className="mt-3 flex items-center gap-2">
-                    <span className="text-[8px] font-bold text-slate-300 uppercase">ID Operação:</span>
-                    <span className="text-[8px] font-mono text-slate-400">{log.entityId}</span>
-                 </div>
                </div>
             </div>
-          )) : (
-            <div className="py-24 text-center bg-white rounded-3xl border border-dashed border-slate-200">
-              <p className="text-slate-300 font-write uppercase text-[10px] tracking-[0.2em]">Log de auditoria vazio</p>
-            </div>
-          )}
+          ))}
         </div>
       )}
     </div>

@@ -126,15 +126,17 @@ export interface Checklist {
   waterChecked: boolean;
   tiresChecked: boolean;
   comments: string;
-  weeklyFuelAmount?: number; // Valor em R$ do abastecimento inicial da semana
-  weeklyFuelLiters?: number; // Litros do abastecimento inicial da semana
+  damagePhoto?: string; // Base64 da foto da avaria
+  damageDescription?: string; // Relato da avaria
+  weeklyFuelAmount?: number; 
+  weeklyFuelLiters?: number; 
 }
 
 export type TripType = 'STANDARD' | 'WEEKLY_ROUTINE';
 
 export interface Trip {
   id: string;
-  type?: TripType; // Novo campo
+  type?: TripType; 
   driverId: string;
   vehicleId: string;
   origin: string;
