@@ -314,6 +314,16 @@ const SchedulingPage: React.FC = () => {
               <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Destino</label><input required placeholder="Endereço de Chegada" value={newSchedule.destination} onChange={(e) => setNewSchedule({ ...newSchedule, destination: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" /></div>
             </div>
 
+            <div className="space-y-4">
+              <label className="block text-[10px] text-slate-400 uppercase mb-2 tracking-widest font-bold">Instruções / Observações do Agendamento</label>
+              <textarea 
+                placeholder="Descreva detalhes importantes para o motorista, pontos de referência ou avisos sobre a carga/viagem..." 
+                value={newSchedule.notes} 
+                onChange={(e) => setNewSchedule({ ...newSchedule, notes: e.target.value })} 
+                className="w-full p-5 bg-slate-50 border border-slate-200 rounded-3xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500 min-h-[100px]"
+              />
+            </div>
+
             {restrictionInfo && (
               <div className={`p-6 rounded-3xl border animate-in shake duration-500 ${restrictionInfo.type === 'RODIZIO' ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
                 <div className="flex items-center gap-3 mb-4">
@@ -372,6 +382,11 @@ const SchedulingPage: React.FC = () => {
                 </div>
                 <h4 className="text-lg font-bold truncate text-slate-800">{trip.destination}</h4>
                 <p className="text-[10px] text-slate-400 font-medium italic">{trip.city}, {trip.state}</p>
+                {trip.notes && !trip.notes.includes('[') && (
+                  <p className="text-[10px] text-indigo-500 font-medium mt-1 truncate">
+                    <i className="fas fa-clipboard-list mr-1"></i> {trip.notes}
+                  </p>
+                )}
               </div>
 
               <div className="hidden lg:block min-w-[200px] px-6 border-l border-slate-50">

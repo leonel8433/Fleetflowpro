@@ -24,6 +24,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
 
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [adminJustification, setAdminJustification] = useState<string>('');
+  const [scheduledNotes, setScheduledNotes] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [checklist, setChecklist] = useState<Partial<Checklist>>({
@@ -92,13 +93,16 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
           setChecklist(prev => ({ ...prev, fuelLevel: vehicle.fuelLevel }));
         }
         
-        if (schedule.notes?.includes('[JUSTIFICATIVA RODÍZIO]')) {
+        // Separa justificativas administrativas de notas gerais
+        if (schedule.notes) {
           const parts = schedule.notes.split('\n');
-          const justificationLine = parts.find(p => p.includes('[JUSTIFICATIVA RODÍZIO]'));
-          if (justificationLine) {
-            const justificationText = justificationLine.replace('[JUSTIFICATIVA RODÍZIO]: ', '');
-            setAdminJustification(justificationText);
+          const rodizioPart = parts.find(p => p.includes('[JUSTIFICATIVA RODÍZIO]'));
+          if (rodizioPart) {
+            setAdminJustification(rodizioPart.replace('[JUSTIFICATIVA RODÍZIO]: ', ''));
           }
+          // Filtra o que não for tag de auditoria/justificativa para exibir como nota operacional
+          const filteredNotes = parts.filter(p => !p.includes('[')).join('\n');
+          setScheduledNotes(filteredNotes);
         }
 
         setStep(1); 
@@ -137,6 +141,7 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
     const now = new Date().toISOString();
     const finalObservations = [
       `MODALIDADE: ${opType === 'WEEKLY_ROUTINE' ? 'ROTINA SEMANAL' : 'VIAGEM PADRÃO'}`,
+      scheduledNotes ? `[NOTAS AGENDAMENTO]: ${scheduledNotes}` : null,
       adminJustification ? `[JUSTIFICATIVA RODÍZIO]: ${adminJustification}` : null,
       aiSuggestion ? `IA SUGGEST: ${aiSuggestion}` : null,
       checklist.damageDescription ? `AVARIA: ${checklist.damageDescription}` : null,
@@ -266,6 +271,17 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                 <i className={`fas ${isOptimizing ? 'fa-circle-notch fa-spin' : 'fa-wand-magic-sparkles'}`}></i> IA Otimizar
               </button>
             </div>
+
+            {scheduledNotes && (
+              <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 animate-in slide-in-from-top-2">
+                 <div className="flex items-center gap-2 mb-2 text-indigo-800">
+                    <i className="fas fa-clipboard-list text-sm"></i>
+                    <span className="text-[10px] font-write uppercase tracking-widest">Instruções do Agendamento:</span>
+                 </div>
+                 <p className="text-sm font-bold text-indigo-900 italic leading-relaxed">"{scheduledNotes}"</p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <input type="date" value={route.tripDate} onChange={(e) => setRoute({...route, tripDate: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" />
               <select value={route.state} onChange={(e) => setRoute({...route, state: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold">
@@ -279,7 +295,6 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
               <input placeholder="Destino Final" value={route.destination} onChange={(e) => setRoute({...route, destination: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" />
             </div>
 
-            {/* Mapa de Pré-visualização da Rota */}
             {route.origin && route.destination && (
               <div className="w-full h-64 bg-slate-100 rounded-3xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-500 relative shadow-inner">
                 <iframe
@@ -319,7 +334,6 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
               {availableVehicles.map(v => {
                 const restriction = getVehicleRestriction(v);
                 const isRestricted = !!restriction;
-                // Bloqueia seleção se houver restrição E não houver liberação admin/agendamento prévio
                 const canSelect = !isRestricted || isAdmin || adminJustification !== '';
 
                 return (
@@ -416,12 +430,6 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                     />
                     <i className="fas fa-gas-pump text-blue-600"></i>
                   </div>
-                  {checklist.fuelLevel !== undefined && checklist.fuelLevel < 10 && (
-                    <div className="mt-4 p-3 bg-red-100 text-red-700 rounded-xl border border-red-200 animate-pulse flex items-center gap-2">
-                       <i className="fas fa-exclamation-triangle"></i>
-                       <span className="text-[10px] font-bold uppercase">Nível crítico. Favor abastecer antes da saída!</span>
-                    </div>
-                  )}
               </div>
             </div>
 
@@ -511,6 +519,13 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                  </div>
                </div>
 
+               {scheduledNotes && (
+                 <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-200">
+                    <p className="text-[9px] font-write text-indigo-700 uppercase mb-1 tracking-widest">Instruções de Escala</p>
+                    <p className="text-xs text-indigo-900 font-bold italic leading-relaxed">"{scheduledNotes}"</p>
+                 </div>
+               )}
+
                <div className="grid grid-cols-2 gap-4">
                  <div>
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Combustível Declarado</p>
@@ -529,16 +544,6 @@ const OperationWizard: React.FC<OperationWizardProps> = ({ scheduledTripId, onCo
                       <img src={checklist.damagePhoto} className="w-12 h-12 rounded-lg object-cover border-2 border-white" alt="" />
                       <p className="text-[10px] text-amber-900 font-medium truncate">{checklist.damageDescription || 'Sem descrição textual.'}</p>
                     </div>
-                 </div>
-               )}
-
-               {adminJustification && (
-                 <div className="bg-amber-100 p-5 rounded-2xl border border-amber-200 animate-in shake duration-500">
-                    <div className="flex items-center gap-2 mb-2 text-amber-800">
-                       <i className="fas fa-user-shield"></i>
-                       <span className="text-[10px] font-write uppercase tracking-widest">Viagem Autorizada por Gestor</span>
-                    </div>
-                    <p className="text-xs text-amber-900 font-medium italic">"{adminJustification}"</p>
                  </div>
                )}
             </div>
