@@ -212,16 +212,16 @@ export const apiService = {
     return fetch(`${BASE_URL}/trips/start`, { method: 'POST', headers, body: JSON.stringify({ trip, checklist }) }).then(r => handleResponse(r)).catch(e => console.warn('Sync failed, saved locally.'));
   },
 
-  async endTrip(tripId: string, endKm: number, endTime: string, expenses: any): Promise<void> {
+  async endTrip(tripId: string, endKm: number, endTime: string, fuelLevel: number, expenses: any): Promise<void> {
     const active = storage.get<Trip[]>('trips_active', []);
     const completed = storage.get<Trip[]>('trips_completed', []);
     const trip = active.find(t => t.id === tripId);
     if (trip) {
-      const finished = { ...trip, endTime, distance: endKm - trip.startKm, ...expenses };
+      const finished = { ...trip, endTime, distance: endKm - trip.startKm, fuelLevel, ...expenses };
       storage.set('trips_active', active.filter(t => t.id !== tripId));
       storage.set('trips_completed', [finished, ...completed]);
     }
-    return fetch(`${BASE_URL}/trips/end`, { method: 'POST', headers, body: JSON.stringify({ tripId, endKm, endTime, expenses }) }).then(r => handleResponse(r)).catch(e => console.warn('Sync failed, saved locally.'));
+    return fetch(`${BASE_URL}/trips/end`, { method: 'POST', headers, body: JSON.stringify({ tripId, endKm, endTime, fuelLevel, expenses }) }).then(r => handleResponse(r)).catch(e => console.warn('Sync failed, saved locally.'));
   },
 
   async saveScheduledTrip(trip: ScheduledTrip): Promise<void> {

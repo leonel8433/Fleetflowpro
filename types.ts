@@ -26,6 +26,7 @@ export interface TireChange {
   brand: string;
   model: string;
   km: number;
+  cost?: number; 
   position?: string;
   nextChangeKm?: number;
 }
@@ -121,13 +122,14 @@ export interface Checklist {
   driverId: string;
   timestamp: string;
   km: number;
+  kmFinal?: number;
   fuelLevel: number;
   oilChecked: boolean;
   waterChecked: boolean;
   tiresChecked: boolean;
   comments: string;
-  damagePhoto?: string; // Base64 da foto da avaria
-  damageDescription?: string; // Relato da avaria
+  damagePhoto?: string; 
+  damageDescription?: string; 
   weeklyFuelAmount?: number; 
   weeklyFuelLiters?: number; 
 }

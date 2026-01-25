@@ -319,7 +319,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const endTrip = async (tripId: string, currentKm: number, endTime: string, fuelLevel: number, expenses: any) => {
     setIsLoading(true);
     try {
-      await apiService.endTrip(tripId, currentKm, endTime, expenses);
+      await apiService.endTrip(tripId, currentKm, endTime, fuelLevel, expenses);
       const trip = activeTrips.find(t => t.id === tripId);
       if (trip) {
         const finishedTrip: Trip = { 

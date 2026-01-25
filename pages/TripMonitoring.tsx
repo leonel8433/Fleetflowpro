@@ -20,7 +20,7 @@ const TripTimer: React.FC<{ startTime: string }> = ({ startTime }) => {
     return () => clearInterval(interval);
   }, [startTime]);
 
-  return <span className="font-mono text-xs text-blue-400 font-bold tabular-nums tracking-widest">{elapsed}</span>;
+  return <span className="font-mono text-xs text-white font-bold tabular-nums tracking-widest">{elapsed}</span>;
 };
 
 // Componente de Barra de Progresso Simulada
@@ -121,13 +121,13 @@ const TripMonitoring: React.FC = () => {
 
   const confirmFinish = () => {
     if (finishingTripId) {
-      endTrip(finishingTripId, endKm, new Date().toISOString(), {
+      endTrip(finishingTripId, endKm, new Date().toISOString(), 100, {
         fuel: fuelExpense,
         other: otherExpense,
         notes: expenseNotes
       });
       setFinishingTripId(null);
-      alert('Operação encerrada!');
+      alert('Operação encerrada administrativamente!');
     }
   };
 
@@ -166,42 +166,50 @@ const TripMonitoring: React.FC = () => {
           const vehicle = vehicles.find(v => v.id === trip.vehicleId);
           const driver = drivers.find(d => d.id === trip.driverId);
           const isMapVisible = visibleMaps[trip.id] ?? false;
+          const isWeekly = trip.type === 'WEEKLY_ROUTINE';
           
           return (
-            <div key={trip.id} className="bg-[#0f172a] rounded-[2.5rem] shadow-2xl border border-blue-400/30 overflow-hidden flex flex-col transition-all duration-500 animate-in zoom-in-95">
+            <div key={trip.id} className={`rounded-[2.5rem] shadow-2xl border overflow-hidden flex flex-col transition-all duration-500 animate-in zoom-in-95 ${isWeekly ? 'bg-[#064e3b] border-emerald-400/40 shadow-emerald-900/10' : 'bg-[#0f172a] border-blue-400/30'}`}>
               
               <div className="flex flex-col">
                 <div className="p-8 space-y-8">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 bg-white/5 rounded-full flex flex-col items-center justify-center border border-white/10 text-white font-mono text-[10px] font-bold shadow-inner uppercase">
+                      <div className={`w-14 h-14 ${isWeekly ? 'bg-emerald-400/10' : 'bg-white/5'} rounded-full flex flex-col items-center justify-center border border-white/10 text-white font-mono text-[10px] font-bold shadow-inner uppercase`}>
                         <span className="opacity-60 text-[8px] mb-0.5">Placa</span>
                         {vehicle?.plate}
                       </div>
                       <div className="min-w-0">
                         <h4 className="text-white font-write text-base uppercase tracking-tight truncate">{vehicle?.model}</h4>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{driver?.name}</p>
+                        <p className={`text-[10px] font-bold uppercase tracking-widest mt-0.5 ${isWeekly ? 'text-emerald-400' : 'text-slate-500'}`}>{driver?.name}</p>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => setAddingNoteTripId(trip.id)} className="w-10 h-10 bg-white/5 text-slate-400 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all border border-white/5" title="Adicionar Nota">
-                        <i className="fas fa-sticky-note text-xs"></i>
-                      </button>
-                      <button onClick={() => handleOpenExternalMap(trip)} className="w-10 h-10 bg-white/5 text-slate-400 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all border border-white/5" title="Abrir GPS">
-                        <i className="fas fa-external-link-alt text-xs"></i>
-                      </button>
-                      <button onClick={() => toggleMapVisibility(trip.id)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all border ${isMapVisible ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'}`} title="Mapa Rápido">
-                        <i className="fas fa-map text-xs"></i>
-                      </button>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[9px] font-bold px-3 py-1.5 rounded-full uppercase tracking-widest flex items-center gap-2 border ${isWeekly ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30' : 'bg-blue-600 text-white border-blue-500/30'}`}>
+                        <i className={`fas ${isWeekly ? 'fa-calendar-check' : 'fa-route'}`}></i>
+                        {isWeekly ? 'Semanal' : 'Avulso'}
+                      </span>
+                      <div className="flex gap-2 ml-2">
+                        <button onClick={() => setAddingNoteTripId(trip.id)} className="w-10 h-10 bg-white/5 text-slate-400 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all border border-white/5" title="Adicionar Nota">
+                          <i className="fas fa-sticky-note text-xs"></i>
+                        </button>
+                        <button onClick={() => handleOpenExternalMap(trip)} className="w-10 h-10 bg-white/5 text-slate-400 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all border border-white/5" title="Abrir GPS">
+                          <i className="fas fa-external-link-alt text-xs"></i>
+                        </button>
+                        <button onClick={() => toggleMapVisibility(trip.id)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all border ${isMapVisible ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'}`} title="Mapa Rápido">
+                          <i className="fas fa-map text-xs"></i>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="bg-white/5 p-6 rounded-3xl border border-white/10 space-y-4">
+                  <div className={`p-6 rounded-3xl border border-white/10 space-y-4 ${isWeekly ? 'bg-emerald-900/40' : 'bg-white/5'}`}>
                     <div className="flex justify-between items-center">
-                      <span className="text-[9px] font-write text-slate-400 uppercase tracking-widest">Tempo Decorrido</span>
+                      <span className="text-[9px] font-write text-slate-400 uppercase tracking-widest">Tempo em Operação</span>
                       <TripTimer startTime={trip.startTime} />
                     </div>
-                    <SimulatedProgress startTime={trip.startTime} />
+                    {/* Barra de progresso visível apenas em viagens avulsas (Standard) */}
+                    {!isWeekly && <SimulatedProgress startTime={trip.startTime} />}
                   </div>
 
                   {isMapVisible && (
@@ -219,15 +227,15 @@ const TripMonitoring: React.FC = () => {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Próxima Parada</p>
+                      <p className={`text-[9px] font-bold uppercase tracking-widest ${isWeekly ? 'text-emerald-400/60' : 'text-slate-500'}`}>{isWeekly ? 'Base de Operação' : 'Próxima Parada'}</p>
                       <p className="text-xs text-white font-bold truncate uppercase">{trip.destination}</p>
-                      <p className="text-[10px] text-blue-400 font-bold uppercase">{trip.city} / {trip.state}</p>
+                      <p className={`text-[10px] font-bold uppercase ${isWeekly ? 'text-emerald-400' : 'text-blue-400'}`}>{trip.city} / {trip.state}</p>
                     </div>
 
                     {trip.observations && (
-                      <div className="bg-white/5 p-4 rounded-2xl border border-white/10 animate-in fade-in slide-in-from-right-2">
-                        <p className="text-[9px] text-amber-400 font-bold uppercase tracking-widest mb-1.5 flex items-center gap-2">
-                          <i className="fas fa-clipboard-list text-[10px]"></i> Diário de Bordo
+                      <div className={`p-4 rounded-2xl border border-white/10 animate-in fade-in slide-in-from-right-2 ${isWeekly ? 'bg-emerald-950/40' : 'bg-white/5'}`}>
+                        <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 flex items-center gap-2 ${isWeekly ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          <i className="fas fa-clipboard-list text-[10px]"></i> Registro Diário
                         </p>
                         <div className="max-h-24 overflow-y-auto custom-scrollbar pr-1">
                           <p className="text-[10px] text-slate-300 font-medium leading-relaxed italic whitespace-pre-line">
@@ -241,9 +249,9 @@ const TripMonitoring: React.FC = () => {
                   <div className="flex gap-4 pt-4">
                     <button 
                       onClick={() => { setFinishingTripId(trip.id); setEndKm(vehicle?.currentKm || 0); }} 
-                      className="flex-[3] py-5 bg-emerald-500/90 hover:bg-emerald-400 text-white rounded-2xl font-write text-xs uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95"
+                      className={`flex-[3] py-5 rounded-2xl font-write text-xs uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95 ${isWeekly ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-indigo-600/90 hover:bg-indigo-500 text-white'}`}
                     >
-                      Encerrar
+                      {isWeekly ? 'Encerrar Ciclo' : 'Encerrar Ativo'}
                     </button>
                     <button 
                       onClick={() => setCancellingTripId(trip.id)}
@@ -264,7 +272,7 @@ const TripMonitoring: React.FC = () => {
         )}
       </div>
 
-      {/* Modal Adicionar Nota/Ocorrência Remota */}
+      {/* MODALS */}
       {addingNoteTripId && (
         <div className="fixed inset-0 z-[280] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-lg animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 space-y-6">
@@ -286,7 +294,6 @@ const TripMonitoring: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de Cancelamento Remoto */}
       {cancellingTripId && (
         <div className="fixed inset-0 z-[260] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-lg animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 space-y-6 animate-in zoom-in-95 duration-300">
@@ -320,13 +327,12 @@ const TripMonitoring: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Finalizar Remoto */}
       {finishingTripId && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden custom-scrollbar overflow-y-auto max-h-[90vh] animate-in zoom-in-95 duration-300">
             <div className="p-8 bg-emerald-600 text-white">
-              <h3 className="text-xl font-write uppercase tracking-tight">Encerrar Operação</h3>
-              <p className="text-[10px] text-emerald-100 font-bold uppercase mt-1 tracking-widest">Ação Administrativa Remota</p>
+              <h3 className="text-xl font-write uppercase tracking-tight">Encerrar Operação Administrativamente</h3>
+              <p className="text-[10px] text-emerald-100 font-bold uppercase mt-1 tracking-widest">Ação Remota Direta</p>
             </div>
             <div className="p-10 space-y-6">
               <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">

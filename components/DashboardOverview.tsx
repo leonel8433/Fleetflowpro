@@ -1,19 +1,10 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useFleet } from '../context/FleetContext';
 import { VehicleStatus, Trip } from '../types';
-import { getFleetStatsAnalysis } from '../services/geminiService';
 
-interface DashboardOverviewProps {
-  onStartSchedule?: (id: string) => void;
-  onNavigate?: (tab: string) => void; 
-}
-
-const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, onNavigate }) => {
-  const { vehicles, activeTrips, scheduledTrips, completedTrips, drivers, maintenanceRecords, fines, currentUser, endTrip, updateTrip, cancelTrip, deleteScheduledTrip } = useFleet();
-  const [elapsedTime, setElapsedTime] = useState<string>('00:00:00');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNavigate?: (tab: string) => void }> = ({ onStartSchedule, onNavigate }) => {
+  const { vehicles, activeTrips, completedTrips, currentUser, endTrip, updateTrip, cancelTrip } = useFleet();
   
   const isAdmin = currentUser?.username === 'admin';
   const myActiveTrip = useMemo(() => activeTrips.find(t => String(t.driverId) === String(currentUser?.id)), [activeTrips, currentUser]);
@@ -21,372 +12,249 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onStartSchedule, 
   
   const isWeekly = myActiveTrip?.type === 'WEEKLY_ROUTINE';
 
-  const myScheduledTrips = useMemo(() => {
-    if (isAdmin) return [];
-    const curId = String(currentUser?.id).trim();
-    return scheduledTrips
-      .filter(t => String(t.driverId).trim() === curId)
-      .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
-  }, [scheduledTrips, currentUser, isAdmin]);
-
-  useEffect(() => {
-    let interval: any;
-    if (myActiveTrip) {
-      interval = setInterval(() => {
-        const start = new Date(myActiveTrip.startTime).getTime();
-        const now = new Date().getTime();
-        const diff = Math.max(0, now - start);
-        const hours = Math.floor(diff / 3600000);
-        const minutes = Math.floor((diff % 3600000) / 60000);
-        const seconds = Math.floor((diff % 60000) / 1000);
-        setElapsedTime(`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [myActiveTrip]);
-
   const [showFinishModal, setShowFinishModal] = useState(false);
-  const [showOccurrenceModal, setShowOccurrenceModal] = useState(false);
+  const [showRefuelModal, setShowRefuelModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
-  const [occurrenceText, setOccurrenceText] = useState('');
+  const [isFinishing, setIsFinishing] = useState(false);
   
+  // ESTADOS PARA FECHAMENTO
   const [endKm, setEndKm] = useState<number>(0);
-  const [endFuel, setEndFuel] = useState<number>(100);
-  const [fuelExpense, setFuelExpense] = useState<number>(0);
-  const [otherExpense, setOtherExpense] = useState<number>(0);
-  const [expenseNotes, setExpenseNotes] = useState<string>('');
+  const [endFuelLevel, setEndFuelLevel] = useState<string>('Completo');
+  const [otherExpenses, setOtherExpenses] = useState<number>(0);
+  const [closingNotes, setClosingNotes] = useState<string>('');
+  const [closingDate, setClosingDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const handleGenerateAIAnalysis = async () => {
-    setIsAnalyzing(true);
-    setAiAnalysis(null);
+  // ESTADOS PARA ABASTECIMENTO DURANTE A SEMANA
+  const [refuelDate, setRefuelDate] = useState(new Date().toISOString().split('T')[0]);
+  const [refuelKm, setRefuelKm] = useState<number>(0);
+  const [refuelLiters, setRefuelLiters] = useState<number>(0);
+  const [refuelValue, setRefuelValue] = useState<number>(0);
 
-    const fleetSummary = {
-      veiculos: { total: vehicles.length, disponiveis: vehicles.filter(v => v.status === VehicleStatus.AVAILABLE).length },
-      viagens: { concluidas_total: completedTrips.length }
-    };
-
-    try {
-      const result = await getFleetStatsAnalysis(fleetSummary);
-      setAiAnalysis(result);
-    } catch (error) {
-      setAiAnalysis("Erro ao processar análise.");
-    } finally {
-      setIsAnalyzing(false);
+  useEffect(() => {
+    if (activeVehicle) {
+      setEndKm(activeVehicle.currentKm);
+      setRefuelKm(activeVehicle.currentKm);
     }
+  }, [activeVehicle, showFinishModal, showRefuelModal]);
+
+  const totalKmRun = useMemo(() => {
+    if (!myActiveTrip) return 0;
+    return Math.max(0, (endKm || 0) - myActiveTrip.startKm);
+  }, [endKm, myActiveTrip]);
+
+  const handleRegisterRefuel = () => {
+    if (!myActiveTrip) return;
+    const refuelLog = `\n[ABASTECIMENTO]: Data: ${refuelDate} | KM: ${refuelKm} | Litros: ${refuelLiters} | R$: ${refuelValue.toFixed(2)}`;
+    updateTrip(myActiveTrip.id, { observations: (myActiveTrip.observations || '') + refuelLog });
+    
+    // Atualiza o contexto global com o custo do abastecimento (acumulativo)
+    const currentFuelExpense = (myActiveTrip.fuelExpense || 0) + refuelValue;
+    updateTrip(myActiveTrip.id, { fuelExpense: currentFuelExpense });
+
+    setShowRefuelModal(false);
+    setRefuelKm(0); setRefuelLiters(0); setRefuelValue(0);
+    alert('Abastecimento registrado com sucesso no diário semanal.');
   };
 
-  const handleAddOccurrence = () => {
-    if (!myActiveTrip || !occurrenceText.trim()) return;
-    const timestamp = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const newNote = `${timestamp}: ${occurrenceText.trim()}`;
-    const updatedObservations = myActiveTrip.observations ? `${myActiveTrip.observations}\n${newNote}` : newNote;
-    updateTrip(myActiveTrip.id, { observations: updatedObservations });
-    setOccurrenceText('');
-    setShowOccurrenceModal(false);
-  };
-
-  const handleConfirmCancelTrip = () => {
-    if (!myActiveTrip || !cancelReason.trim()) {
-      alert("O motivo do cancelamento é obrigatório.");
-      return;
-    }
-    cancelTrip(myActiveTrip.id, cancelReason.trim());
-    setShowCancelModal(false);
-    setCancelReason('');
-  };
-
-  const handleCancelScheduledTrip = useCallback(async (id: string) => {
-    if (window.confirm('Deseja realmente remover este agendamento da sua escala de hoje?')) {
-      try {
-        await deleteScheduledTrip(id);
-        alert('Agendamento removido com sucesso.');
-      } catch (err) {
-        alert('Erro ao tentar cancelar o agendamento.');
-      }
-    }
-  }, [deleteScheduledTrip]);
-
-  const confirmFinish = () => {
+  const confirmFinish = async () => {
     if (myActiveTrip) {
       if (endKm < myActiveTrip.startKm) {
-        alert("O KM final não pode ser menor que o KM inicial.");
+        alert(`ERRO DE QUILOMETRAGEM: O KM final digitado (${endKm}) não pode ser inferior ao KM registrado na abertura desta viagem (${myActiveTrip.startKm}). Por favor, informe o KM correto do painel.`);
         return;
       }
-      endTrip(myActiveTrip.id, endKm, new Date().toISOString(), endFuel, {
-        fuel: fuelExpense,
-        other: otherExpense,
-        notes: expenseNotes.trim()
-      });
-      setShowFinishModal(false);
+      
+      setIsFinishing(true);
+      try {
+        const fuelPercentageMap: Record<string, number> = { 'Completo': 100, '3/4': 75, '1/2': 50, '1/4': 25, 'Reserva': 10 };
+        const fuelLevel = fuelPercentageMap[endFuelLevel] || 100;
+
+        await endTrip(myActiveTrip.id, endKm, new Date().toISOString(), fuelLevel, {
+          fuel: myActiveTrip.fuelExpense || 0,
+          other: otherExpenses,
+          notes: `${isWeekly ? 'FECHAMENTO SEMANAL' : 'FECHAMENTO AVULSO'}: ${closingDate} | TOTAL KM: ${totalKmRun} | NÍVEL FINAL: ${endFuelLevel} | OBS: ${closingNotes}`.trim()
+        });
+        
+        setShowFinishModal(false);
+        setClosingNotes('');
+        setOtherExpenses(0);
+        alert('Viagem encerrada com sucesso!');
+      } catch (err) {
+        alert('Ocorreu um erro ao encerrar a viagem. Verifique sua conexão e tente novamente.');
+      } finally {
+        setIsFinishing(false);
+      }
     }
   };
-
-  const journeyEvents = useMemo(() => {
-    if (!myActiveTrip?.observations) return [];
-    return myActiveTrip.observations.split('\n').filter(line => line.includes(': '));
-  }, [myActiveTrip]);
 
   return (
     <div className="space-y-6 pb-12">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">Dashboard</h2>
-          <p className="text-xs text-slate-400 font-medium">Logado como: {currentUser?.name}</p>
-        </div>
-        {isAdmin && (
-          <button onClick={handleGenerateAIAnalysis} disabled={isAnalyzing} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-write uppercase tracking-widest shadow-xl hover:bg-indigo-700 transition-all disabled:opacity-50">
-            <i className={`fas ${isAnalyzing ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`}></i>
-            Gerar Análise IA
-          </button>
-        )}
+        <h2 className="text-2xl font-bold text-slate-800">Minha Operação</h2>
+        <p className="text-xs text-slate-400 font-medium">{currentUser?.name}</p>
       </div>
 
-      {isAdmin && (aiAnalysis || isAnalyzing) && (
-        <div className="bg-slate-900 rounded-[2.5rem] p-8 shadow-2xl border border-white/10 animate-in fade-in zoom-in-95 duration-500 overflow-hidden relative">
-          <div className="bg-white/5 backdrop-blur-sm p-8 rounded-3xl border border-white/10">
-            {isAnalyzing ? (<div className="h-4 bg-white/10 rounded-full w-3/4 animate-pulse"></div>) : (<div className="prose prose-invert prose-sm max-w-none text-slate-300">{aiAnalysis}</div>)}
-          </div>
-        </div>
-      )}
-
       {!isAdmin && myActiveTrip && (
-        <div className={`rounded-[2.5rem] p-8 shadow-2xl relative animate-in fade-in zoom-in duration-500 border ${isWeekly ? 'bg-slate-800 border-indigo-400/20' : 'bg-slate-900 border-white/5'} text-white`}>
-          <div className="flex justify-between items-center mb-10">
-            <span className={`${isWeekly ? 'bg-indigo-600' : 'bg-emerald-500'} text-white text-[10px] font-write px-4 py-1.5 rounded-full animate-pulse tracking-widest uppercase`}>
-              {isWeekly ? 'Rotina Semanal Ativa' : 'Em Operação / Viagem'}
+        <div className={`rounded-[2.5rem] p-8 shadow-2xl relative animate-in fade-in duration-500 border ${isWeekly ? 'bg-emerald-950 border-emerald-400/20 shadow-emerald-900/10' : 'bg-slate-900 border-white/5'} text-white`}>
+          <div className="flex justify-between items-center mb-8">
+            <span className={`${isWeekly ? 'bg-emerald-600' : 'bg-indigo-600'} text-white text-[10px] font-bold px-4 py-1.5 rounded-full uppercase tracking-widest flex items-center gap-2`}>
+              <i className={`fas ${isWeekly ? 'fa-calendar-check' : 'fa-route'}`}></i>
+              {isWeekly ? 'Rotina Semanal Ativa' : 'Viagem em Curso'}
             </span>
-            <div className="flex flex-col items-end">
-               <span className="text-[9px] font-write text-blue-400 uppercase tracking-widest">Tempo de Atividade</span>
-               <span className="text-4xl font-mono font-bold tracking-wider leading-none">{elapsedTime}</span>
-            </div>
+            {isWeekly && (
+              <span className="text-[10px] font-bold text-emerald-400 uppercase">
+                Acumulado: {((myActiveTrip.fuelExpense || 0) + (myActiveTrip.otherExpense || 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+            )}
           </div>
-
-          {activeVehicle && activeVehicle.fuelLevel < 10 && (
-            <div className="mb-6 p-4 bg-red-600/30 border border-red-500 rounded-2xl flex items-center gap-4 animate-pulse">
-               <div className="w-10 h-10 bg-red-600 text-white rounded-xl flex items-center justify-center shadow-lg">
-                  <i className="fas fa-gas-pump"></i>
-               </div>
-               <div>
-                  <p className="text-[10px] font-write uppercase tracking-widest text-red-100">Alerta de Combustível Crítico</p>
-                  <p className="text-xs font-bold text-white uppercase">Nível atual: {activeVehicle.fuelLevel}%. Recomenda-se abastecimento imediato.</p>
-               </div>
-            </div>
-          )}
           
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-6">
+               <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center font-mono text-xs border border-white/5 shadow-inner">
+                    {activeVehicle?.plate}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold uppercase leading-tight">{activeVehicle?.model}</h3>
+                    <p className="text-xs font-medium text-slate-400">{isWeekly ? 'Rota Fixa: ' : 'Destino: '} {myActiveTrip.destination}</p>
+                  </div>
+               </div>
+               <div className="flex gap-4">
+                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex-1">
+                     <p className="text-[10px] text-emerald-400 uppercase font-bold mb-1 tracking-widest">Abertura KM</p>
+                     <p className="text-xl font-bold tabular-nums">{myActiveTrip.startKm} km</p>
+                  </div>
+                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex-1">
+                     <p className="text-[10px] text-blue-400 uppercase font-bold mb-1 tracking-widest">Início em</p>
+                     <p className="text-xl font-bold tabular-nums">{new Date(myActiveTrip.startTime).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</p>
+                  </div>
+               </div>
+            </div>
+
+            <div className="flex flex-col gap-3 justify-end">
+               {isWeekly && (
+                 <button onClick={() => setShowRefuelModal(true)} className="w-full py-4 bg-emerald-600/20 border border-emerald-500/30 hover:bg-emerald-600 text-white rounded-2xl font-bold uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-3 shadow-xl">
+                   <i className="fas fa-gas-pump"></i> Registrar Abastecimento
+                 </button>
+               )}
+               <div className="flex gap-3">
+                 <button onClick={() => setShowCancelModal(true)} className="flex-1 py-4 bg-red-600/10 border border-red-600/30 text-red-500 hover:bg-red-600 hover:text-white rounded-2xl font-bold uppercase text-[10px] tracking-widest transition-all">
+                   Cancelar
+                 </button>
+                 <button onClick={() => setShowFinishModal(true)} className={`flex-[2] py-4 ${isWeekly ? 'bg-emerald-500 shadow-emerald-500/20' : 'bg-indigo-600 shadow-indigo-500/20'} text-white rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-xl hover:scale-[1.02] transition-all`}>
+                   {isWeekly ? 'Encerrar Ciclo Semanal' : 'Encerrar Operação'}
+                 </button>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL REGISTRO ABASTECIMENTO (DURANTE A SEMANA) */}
+      {showRefuelModal && (
+        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 space-y-6">
+            <h3 className="text-xl font-bold uppercase text-slate-800 text-center tracking-tight">Registro de Abastecimento</h3>
             <div className="space-y-4">
-               <div className="flex items-center gap-3">
-                  <span className="bg-white/10 px-3 py-1 rounded-lg font-mono text-xs">{activeVehicle?.plate}</span>
-                  <h3 className="text-xl font-write uppercase tracking-tight">{activeVehicle?.model}</h3>
-               </div>
-               <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">{isWeekly ? 'Abrangência de Trabalho' : 'Destino'}</p>
-                  <p className="text-sm font-bold truncate">{myActiveTrip.destination}</p>
-               </div>
-            </div>
-
-            <div className="bg-white/5 p-6 rounded-3xl border border-white/10">
-              <p className="text-[10px] text-blue-400 font-write uppercase tracking-widest mb-4 flex items-center gap-2">
-                <i className="fas fa-list-ul"></i> Log de Atividades {isWeekly ? 'da Semana' : 'da Viagem'}
-              </p>
-              <div className="max-h-32 overflow-y-auto custom-scrollbar space-y-3">
-                {journeyEvents.length > 0 ? journeyEvents.map((ev, i) => (
-                  <div key={i} className="flex gap-3 items-start animate-in slide-in-from-right-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0"></div>
-                    <p className="text-[11px] text-slate-300 font-medium italic">{ev}</p>
-                  </div>
-                )) : (
-                  <p className="text-[10px] text-slate-500 italic">Nenhum evento registrado hoje.</p>
-                )}
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Data</label>
+                <input type="date" value={refuelDate} onChange={(e) => setRefuelDate(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
               </div>
-            </div>
-          </div>
-
-          <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-             {!isWeekly && (
-               <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(myActiveTrip.destination)}`, '_blank')} className="py-5 bg-blue-600 rounded-2xl font-write text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
-                 <i className="fas fa-location-arrow"></i> GPS
-               </button>
-             )}
-             <button onClick={() => setShowOccurrenceModal(true)} className="py-5 bg-slate-700 rounded-2xl font-write text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
-               <i className="fas fa-comment-medical"></i> Registrar Fato
-             </button>
-             <button onClick={() => setShowCancelModal(true)} className="py-5 border border-red-600/30 text-red-500 rounded-2xl font-write text-[10px] uppercase tracking-widest hover:bg-red-500/10 transition-colors">Cancelar</button>
-             <button onClick={() => { setEndKm(activeVehicle?.currentKm || 0); setEndFuel(activeVehicle?.fuelLevel || 100); setShowFinishModal(true); }} className="py-5 bg-emerald-600 rounded-2xl font-write text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
-               <i className="fas fa-flag-checkered"></i> Encerrar {isWeekly ? 'Semana' : 'Viagem'}
-             </button>
-          </div>
-        </div>
-      )}
-
-      {!isAdmin && !myActiveTrip && myScheduledTrips.length > 0 && (
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-indigo-100">
-          <h3 className="text-xs font-write text-indigo-900 uppercase tracking-widest mb-8 flex items-center gap-2">
-            <i className="fas fa-calendar-check text-indigo-500"></i> Sua Agenda Hoje
-          </h3>
-          <div className="space-y-6">
-            {myScheduledTrips.map(trip => (
-              <div key={trip.id} className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col gap-4 group hover:border-indigo-200 transition-all">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-6">
-                    <div className="w-16 h-16 bg-white rounded-2xl border border-slate-100 flex flex-col items-center justify-center shrink-0">
-                        <span className="text-xl font-write text-indigo-600 leading-none">{new Date(trip.scheduledDate + 'T00:00:00').getDate()}</span>
-                        <span className="text-[8px] font-bold text-slate-400 uppercase mt-1">Viagem</span>
-                    </div>
-                    <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">{vehicles.find(v => v.id === trip.vehicleId)?.plate} • {vehicles.find(v => v.id === trip.vehicleId)?.model}</p>
-                          {trip.notes?.includes('[JUSTIFICATIVA RODÍZIO]') && (
-                            <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[8px] font-write uppercase border border-amber-200">Autorizada</span>
-                          )}
-                        </div>
-                        <h4 className="text-lg font-bold text-slate-800 truncate">{trip.destination}</h4>
-                    </div>
-                  </div>
-                  <div className="flex gap-3">
-                    <button 
-                      onClick={() => handleCancelScheduledTrip(trip.id)} 
-                      className="w-14 h-14 bg-white border border-red-100 text-red-500 hover:bg-red-500 hover:text-white rounded-2xl flex items-center justify-center transition-all active:scale-95 shadow-sm"
-                      title="Excluir Agendamento"
-                    >
-                      <i className="fas fa-trash-can text-lg"></i>
-                    </button>
-                    <button 
-                      onClick={() => onStartSchedule?.(trip.id)} 
-                      className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-write uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-100 transition-all active:scale-95 flex items-center gap-2"
-                    >
-                      <i className="fas fa-play text-[8px]"></i> Iniciar
-                    </button>
-                  </div>
-                </div>
-                
-                {trip.notes && (
-                  <div className={`p-4 rounded-2xl border flex items-start gap-3 shadow-sm animate-pulse-slow ${trip.notes.includes('[JUSTIFICATIVA RODÍZIO]') ? 'bg-amber-50 border-amber-200' : 'bg-white border-indigo-100'}`}>
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${trip.notes.includes('[JUSTIFICATIVA RODÍZIO]') ? 'bg-amber-100 text-amber-600' : 'bg-indigo-50 text-indigo-600'}`}>
-                      <i className={`fas ${trip.notes.includes('[JUSTIFICATIVA RODÍZIO]') ? 'fa-shield-halved' : 'fa-clipboard-list'} text-xs`}></i>
-                    </div>
-                    <div>
-                      <p className={`text-[9px] font-write uppercase tracking-widest mb-0.5 ${trip.notes.includes('[JUSTIFICATIVA RODÍZIO]') ? 'text-amber-500' : 'text-indigo-400'}`}>
-                        {trip.notes.includes('[JUSTIFICATIVA RODÍZIO]') ? 'Autorização de Rodízio:' : 'Destaque Administrativo:'}
-                      </p>
-                      <p className="text-xs text-slate-700 font-bold leading-relaxed">"{trip.notes}"</p>
-                    </div>
-                  </div>
-                )}
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Quilometragem no Ato (KM)</label>
+                <input type="number" value={refuelKm} onChange={(e) => setRefuelKm(parseInt(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {isAdmin && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-           <div className="bg-white p-8 rounded-[2.5rem] border border-blue-100 shadow-xl flex items-center justify-between overflow-hidden relative">
-              <div className="relative z-10">
-                 <p className="text-[10px] text-slate-400 uppercase font-write tracking-widest mb-1">Disponibilidade</p>
-                 <span className="text-5xl font-write text-slate-800">{vehicles.filter(v => v.status === VehicleStatus.AVAILABLE).length}</span>
-              </div>
-              <i className="fas fa-truck text-7xl text-slate-50 absolute -right-4 -bottom-4"></i>
-           </div>
-           <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl flex items-center justify-between overflow-hidden relative">
-              <div className="relative z-10">
-                 <p className="text-[10px] text-slate-400 uppercase font-write tracking-widest mb-1">Em Rota</p>
-                 <span className="text-5xl font-write text-blue-600">{activeTrips.length}</span>
-              </div>
-              <i className="fas fa-location-dot text-7xl text-slate-50 absolute -right-4 -bottom-4"></i>
-           </div>
-        </div>
-      )}
-
-      {/* Modal de Relato */}
-      {showOccurrenceModal && (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 space-y-6">
-            <h3 className="text-xl font-write uppercase text-slate-800 tracking-tight text-center">Checkpoint</h3>
-            <textarea autoFocus value={occurrenceText} onChange={(e) => setOccurrenceText(e.target.value)} className="w-full bg-slate-50 p-6 rounded-3xl outline-none font-write text-sm text-slate-950 min-h-[120px]" placeholder="O que aconteceu agora?" />
-            <div className="flex gap-4">
-              <button onClick={() => setShowOccurrenceModal(false)} className="flex-1 py-5 text-slate-400 font-write uppercase text-[10px]">Voltar</button>
-              <button onClick={handleAddOccurrence} className="flex-[2] py-5 bg-slate-900 text-white rounded-2xl font-write uppercase text-xs">Salvar Relato</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Cancelamento */}
-      {showCancelModal && (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 space-y-6">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-4">
-                <i className="fas fa-ban"></i>
-              </div>
-              <h3 className="text-xl font-write uppercase text-slate-800 tracking-tight">Cancelar Viagem</h3>
-              <p className="text-xs text-slate-400 font-bold uppercase mt-1">Informe o motivo para auditoria</p>
-            </div>
-            <textarea autoFocus value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} className="w-full bg-slate-50 p-6 rounded-3xl outline-none font-write text-sm text-slate-950 min-h-[120px]" placeholder="Ex: Problema mecânico, pneu furado, erro de destino..." />
-            <div className="flex gap-4">
-              <button onClick={() => setShowCancelModal(false)} className="flex-1 py-5 text-slate-400 font-write uppercase text-[10px]">Voltar</button>
-              <button onClick={handleConfirmCancelTrip} disabled={!cancelReason.trim()} className="flex-[2] py-5 bg-red-600 text-white rounded-2xl font-write uppercase text-xs disabled:opacity-30">Confirmar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Encerrar */}
-      {showFinishModal && (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div className={`${isWeekly ? 'bg-indigo-600' : 'bg-emerald-600'} p-8 text-white flex justify-between items-center`}>
-               <h3 className="text-xl font-write uppercase tracking-tight">Finalizar {isWeekly ? 'Ciclo Semanal' : 'Viagem'}</h3>
-               <i className="fas fa-flag-checkered text-2xl opacity-40"></i>
-            </div>
-            <div className="p-10 space-y-6">
-              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                <label className="block text-[10px] font-write text-slate-400 uppercase mb-3 text-center font-bold tracking-widest">Odômetro Final no {isWeekly ? 'Sábado/Retorno' : 'Destino'}</label>
-                <input type="number" autoFocus value={endKm} onChange={(e) => setEndKm(parseInt(e.target.value) || 0)} className="w-full px-5 py-5 bg-transparent outline-none font-write text-3xl text-slate-900 text-center" />
-                <p className="text-[9px] text-center text-slate-400 mt-2">KM Inicial: {myActiveTrip?.startKm} km</p>
-              </div>
-
-              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                <label className="block text-[10px] font-write text-slate-400 uppercase mb-4 text-center font-bold tracking-widest">Nível de Combustível Final: {endFuel}%</label>
-                <div className="flex items-center gap-4">
-                  <i className="fas fa-gas-pump text-slate-400"></i>
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="100" 
-                    step="5" 
-                    value={endFuel} 
-                    onChange={(e) => setEndFuel(parseInt(e.target.value))} 
-                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                  />
-                  <i className="fas fa-gas-pump text-blue-600"></i>
-                </div>
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                   <label className="text-[10px] font-write text-slate-400 uppercase tracking-widest ml-1">Despesas de Combustível (R$)</label>
-                   <input type="number" value={fuelExpense} onChange={(e) => setFuelExpense(parseFloat(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" />
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Litros</label>
+                  <input type="number" step="0.01" value={refuelLiters} onChange={(e) => setRefuelLiters(parseFloat(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
-                <div className="space-y-2">
-                   <label className="text-[10px] font-write text-slate-400 uppercase tracking-widest ml-1">Extras / Pedágios (R$)</label>
-                   <input type="number" value={otherExpense} onChange={(e) => setOtherExpense(parseFloat(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" />
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Valor Pago (R$)</label>
+                  <input type="number" step="0.01" value={refuelValue} onChange={(e) => setRefuelValue(parseFloat(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-4 pt-4">
+              <button onClick={() => setShowRefuelModal(false)} className="flex-1 py-4 text-slate-400 uppercase font-bold text-[10px] tracking-widest">Cancelar</button>
+              <button onClick={handleRegisterRefuel} className="flex-[2] py-4 bg-emerald-600 text-white rounded-2xl font-bold uppercase text-xs shadow-xl tracking-widest shadow-emerald-100">Registrar Diário</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL FECHAMENTO */}
+      {showFinishModal && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className={`${isWeekly ? 'bg-emerald-600' : 'bg-indigo-600'} p-10 text-white flex justify-between items-center`}>
+               <div>
+                 <h3 className="text-2xl font-bold uppercase tracking-tight">{isWeekly ? 'Encerramento Semanal' : 'Encerrar Viagem'}</h3>
+                 <p className="text-[10px] font-bold opacity-80 uppercase mt-1 tracking-widest">Revisão de Quilometragem e Custos</p>
+               </div>
+               <i className={`fas ${isWeekly ? 'fa-calendar-check' : 'fa-flag-checkered'} text-3xl`}></i>
+            </div>
+            <div className="p-10 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Data Encerramento</label><input type="date" value={closingDate} onChange={(e) => setClosingDate(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" /></div>
+                <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Quilometragem Final</label><input type="number" value={endKm} onChange={(e) => setEndKm(parseInt(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
+              </div>
+
+              {isWeekly && (
+                <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 flex justify-between items-center animate-in slide-in-from-top duration-500">
+                   <div>
+                     <p className="text-[10px] font-bold text-emerald-900 uppercase tracking-widest">Total Percorrido no Ciclo</p>
+                     <p className="text-xs text-emerald-600 font-medium">Km Final - Km Abertura</p>
+                   </div>
+                   <p className="text-4xl font-black text-emerald-600">{totalKmRun} <span className="text-sm">KM</span></p>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest ml-1">Nível de Combustível ao Finalizar</label>
+                <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
+                  {['Completo', '3/4', '1/2', '1/4', 'Reserva'].map(level => (
+                    <button key={level} onClick={() => setEndFuelLevel(level)} className={`px-2 py-3 rounded-xl text-[9px] font-bold uppercase transition-all border ${endFuelLevel === level ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100'}`}>{level}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest ml-1">Despesas de Outros Serviços</label>
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                     <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Total Adicional (Lavagem, Estacionamento, etc)</label>
+                     <input type="number" step="0.01" placeholder="R$ 0,00" value={otherExpenses || ''} onChange={(e) => setOtherExpenses(parseFloat(e.target.value) || 0)} className="w-full p-2 bg-transparent border-b border-slate-200 font-bold outline-none" />
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-2">
-                 <label className="text-[10px] font-write text-slate-400 uppercase tracking-widest ml-1">Relatório de Encerramento</label>
-                 <textarea value={expenseNotes} onChange={(e) => setExpenseNotes(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm min-h-[80px]" placeholder="Descreva como foi a semana ou os principais pontos da viagem..." />
+                <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest ml-1">Observações de Encerramento</label>
+                <textarea placeholder="Relate aqui qualquer ocorrência, avaria ou nota importante sobre a viagem..." value={closingNotes} onChange={(e) => setClosingNotes(e.target.value)} className="w-full p-5 bg-slate-50 border border-slate-200 rounded-[2rem] font-bold text-sm min-h-[100px] outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
 
-              <div className="flex gap-4 pt-4">
-                <button onClick={() => setShowFinishModal(false)} className="flex-1 py-5 text-slate-400 font-write uppercase text-[10px]">Voltar</button>
-                <button onClick={confirmFinish} className={`flex-[2] py-5 ${isWeekly ? 'bg-indigo-600' : 'bg-emerald-600'} text-white rounded-2xl font-write uppercase text-xs shadow-xl active:scale-95 transition-all`}>
-                   Encerrar Agora
+              <div className="flex gap-4 pt-4 border-t border-slate-100">
+                <button disabled={isFinishing} onClick={() => setShowFinishModal(false)} className="flex-1 py-4 text-slate-400 uppercase font-bold text-[10px] tracking-widest">Voltar</button>
+                <button disabled={isFinishing} onClick={confirmFinish} className={`flex-[2] py-5 ${isWeekly ? 'bg-emerald-600 shadow-emerald-200' : 'bg-indigo-600 shadow-indigo-100'} text-white rounded-2xl font-bold uppercase text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3`}>
+                  {isFinishing ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : 'Confirmar Encerramento'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CANCELAMENTO */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 space-y-6">
+            <h3 className="text-xl font-bold uppercase text-slate-800 text-center">Cancelar Operação</h3>
+            <p className="text-xs text-slate-500 text-center">Informe o motivo da interrupção do ciclo.</p>
+            <textarea autoFocus value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} className="w-full bg-slate-50 p-6 rounded-[2rem] outline-none font-bold text-sm border border-slate-100" placeholder="Motivo do cancelamento..." />
+            <div className="flex gap-4">
+              <button onClick={() => setShowCancelModal(false)} className="flex-1 py-4 text-slate-400 uppercase font-bold text-[10px] tracking-widest">Sair</button>
+              <button onClick={() => { cancelTrip(myActiveTrip!.id, cancelReason); setShowCancelModal(false); }} disabled={!cancelReason.trim()} className="flex-[2] py-4 bg-red-600 text-white rounded-2xl font-bold uppercase text-xs shadow-xl shadow-red-100 transition-all active:scale-95">Confirmar Cancelamento</button>
             </div>
           </div>
         </div>
