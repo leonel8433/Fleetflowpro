@@ -25,6 +25,9 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
   const [isLoadingLocs, setIsLoadingLocs] = useState(false);
   const [adminJustification, setAdminJustification] = useState('');
   const [newWaypoint, setNewWaypoint] = useState('');
+  
+  // Estado para verificar autorização prévia (Rodízio)
+  const [isPreAuthorized, setIsPreAuthorized] = useState(false);
 
   const isAdmin = currentUser?.username === 'admin';
 
@@ -88,6 +91,11 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
           waypoints: trip.waypoints || []
         });
         
+        // Verifica se já existe uma justificativa de rodízio nas notas (autorização do admin)
+        if (trip.notes?.includes('[JUSTIFICATIVA RODÍZIO SP]')) {
+          setIsPreAuthorized(true);
+        }
+
         const vehicle = vehicles.find(v => v.id === trip.vehicleId);
         if (vehicle) {
           setSelectedVehicle(vehicle);
@@ -154,21 +162,28 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
   const handleStartTrip = () => {
     if (!selectedVehicle || !currentUser) return;
     
-    // VALIDACAO DE KM INICIAL (Comparando com o KM registrado no final da última viagem/manutenção)
-    const kmInicialValido = (checklist.km || 0) >= selectedVehicle.currentKm;
-    if (!kmInicialValido) {
-      alert(`ERRO DE QUILOMETRAGEM: O KM inicial digitado (${checklist.km}) não pode ser inferior ao último KM registrado do veículo (${selectedVehicle.currentKm}). Verifique o odômetro no painel do veículo.`);
+    // VALIDACAO DE KM INICIAL CRÍTICA
+    const kmInformado = checklist.km || 0;
+    const kmAtualVeiculo = selectedVehicle.currentKm;
+
+    if (kmInformado < kmAtualVeiculo) {
+      alert(`⚠️ ERRO DE QUILOMETRAGEM: O KM inicial digitado (${kmInformado}) não pode ser inferior ao último KM registrado no sistema para este veículo (${kmAtualVeiculo}). Por favor, verifique o odômetro no painel do veículo e corrija o valor.`);
       return;
     }
 
     // Validação de Rodízio final antes de iniciar
     if (isDestSaoPaulo && checkSPRodizio(selectedVehicle.plate, new Date(route.startDate + 'T12:00:00'))) {
-      if (!isAdmin) {
-        alert("Erro: Este veículo está em dia de rodízio em São Paulo. Operação bloqueada.");
+      if (!isAdmin && !isPreAuthorized) {
+        alert("Erro: Este veículo está em dia de rodízio em São Paulo. Operação bloqueada. Contate a administração para autorização prévia.");
         return;
-      } else if (!adminJustification.trim()) {
+      } else if (isAdmin && !adminJustification.trim() && !isPreAuthorized) {
         alert("Administrador, por favor informe a justificativa para utilizar o veículo em dia de rodízio.");
         return;
+      }
+      
+      // Se o motorista está autorizado, exibimos um último lembrete
+      if (!isAdmin && isPreAuthorized) {
+        alert("⚠️ ATENÇÃO CONDUTOR: Esta viagem em zona de rodízio foi AUTORIZADA previamente pela administração. Prossiga com cautela.");
       }
     }
 
@@ -190,7 +205,7 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
       state: route.state,
       waypoints: route.waypoints,
       startTime: now,
-      startKm: checklist.km || selectedVehicle.currentKm,
+      startKm: kmInformado,
       observations: isWeekly 
         ? `[ABERTURA SEMANAL] Início em: ${route.startDate}\nCondutor: ${currentUser.name}\nVeículo: ${selectedVehicle.plate}\nRota: ${route.origin} -> ${route.destination}` 
         : (adminJustification ? `[JUSTIFICATIVA RODÍZIO SP]: ${adminJustification}\n` : '')
@@ -202,6 +217,7 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
       driverId: currentUser.id,
       vehicleId: selectedVehicle.id,
       timestamp: now,
+      km: kmInformado,
       oilChecked: weeklyChecklist.fluids,
       waterChecked: weeklyChecklist.fluids,
       tiresChecked: weeklyChecklist.tires,
@@ -354,14 +370,15 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
                 .filter(v => v.status === VehicleStatus.AVAILABLE || v.id === selectedVehicle?.id)
                 .map(v => {
                   const isRestricted = isDestSaoPaulo && checkSPRodizio(v.plate, new Date(route.startDate + 'T12:00:00'));
+                  const canSelect = !isRestricted || isAdmin || isPreAuthorized;
                   
                   return (
                     <button 
                       key={v.id} 
-                      disabled={isRestricted && !isAdmin}
+                      disabled={!canSelect}
                       onClick={() => setSelectedVehicle(v)} 
                       className={`p-6 rounded-3xl border-2 transition-all text-left relative flex flex-col h-full ${
-                        isRestricted && !isAdmin
+                        !canSelect
                           ? 'bg-red-50 border-red-200 opacity-60 cursor-not-allowed' 
                           : selectedVehicle?.id === v.id 
                             ? 'border-indigo-600 bg-indigo-50 shadow-lg' 
@@ -370,10 +387,14 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
                     >
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <p className={`text-lg font-bold ${isRestricted ? 'text-red-800' : 'text-slate-900'}`}>{v.plate}</p>
+                          <p className={`text-lg font-bold ${isRestricted ? (isPreAuthorized ? 'text-amber-600' : 'text-red-800') : 'text-slate-900'}`}>{v.plate}</p>
                           <p className="text-[10px] text-slate-400 font-bold uppercase">{v.model}</p>
                         </div>
-                        {isRestricted && <span className="bg-red-600 text-white text-[7px] font-bold px-1.5 py-0.5 rounded uppercase">Rodízio</span>}
+                        {isRestricted && (
+                          <span className={`${isPreAuthorized ? 'bg-amber-500' : 'bg-red-600'} text-white text-[7px] font-bold px-1.5 py-0.5 rounded uppercase`}>
+                            {isPreAuthorized ? 'Autorizado' : 'Rodízio'}
+                          </span>
+                        )}
                       </div>
                       <div className="mt-auto flex justify-between items-center text-[8px] font-bold text-slate-400 uppercase tracking-widest">
                         <span>{v.brand}</span>
@@ -385,11 +406,19 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
             </div>
 
             {selectedVehicle && isDestSaoPaulo && checkSPRodizio(selectedVehicle.plate, new Date(route.startDate + 'T12:00:00')) && (
-               <div className="bg-amber-50 p-6 rounded-3xl border border-amber-200 animate-in slide-in-from-top-2">
-                  <p className="text-[10px] font-bold text-amber-800 uppercase mb-3 flex items-center gap-2">
-                    <i className="fas fa-triangle-exclamation"></i> VEÍCULO EM RODÍZIO: {getRodizioDayLabel(selectedVehicle.plate)}
+               <div className={`${isPreAuthorized ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'} p-6 rounded-3xl border animate-in slide-in-from-top-2`}>
+                  <p className={`text-[10px] font-bold uppercase mb-3 flex items-center gap-2 ${isPreAuthorized ? 'text-blue-800' : 'text-amber-800'}`}>
+                    <i className={`fas ${isPreAuthorized ? 'fa-check-circle' : 'fa-triangle-exclamation'}`}></i> 
+                    VEÍCULO EM RODÍZIO: {getRodizioDayLabel(selectedVehicle.plate)}
                   </p>
-                  {isAdmin ? (
+                  {isPreAuthorized ? (
+                    <div className="p-4 bg-white/60 rounded-2xl border border-blue-100">
+                      <p className="text-[10px] text-blue-700 font-bold uppercase">
+                        ✅ ESTE AGENDAMENTO POSSUI AUTORIZAÇÃO ADMINISTRATIVA. 
+                      </p>
+                      <p className="text-[9px] text-blue-500 mt-1 uppercase font-medium">A liberação foi registrada pelo administrador no momento da escala.</p>
+                    </div>
+                  ) : isAdmin ? (
                     <div className="space-y-3">
                        <label className="block text-[9px] font-bold text-amber-700 uppercase">Justificativa Administrativa Necessária</label>
                        <textarea 
@@ -400,7 +429,7 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
                        />
                     </div>
                   ) : (
-                    <p className="text-[10px] text-red-600 font-bold uppercase">Motorista, você não possui permissão para liberar veículos em rodízio. Contate a base.</p>
+                    <p className="text-[10px] text-red-600 font-bold uppercase">Motorista, este veículo não possui autorização administrativa para circular no rodízio hoje. Operação bloqueada.</p>
                   )}
                </div>
             )}
@@ -408,7 +437,7 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
             <div className="flex justify-between pt-6 border-t">
               <button onClick={() => setStep(1)} className="text-slate-400 uppercase font-bold text-xs tracking-widest">Voltar</button>
               <button 
-                disabled={!selectedVehicle || (isDestSaoPaulo && checkSPRodizio(selectedVehicle.plate, new Date(route.startDate + 'T12:00:00')) && (!isAdmin || !adminJustification.trim()))} 
+                disabled={!selectedVehicle || (isDestSaoPaulo && checkSPRodizio(selectedVehicle.plate, new Date(route.startDate + 'T12:00:00')) && (!isAdmin && !isPreAuthorized || isAdmin && !isPreAuthorized && !adminJustification.trim()))} 
                 onClick={() => setStep(3)} 
                 className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-bold uppercase text-xs shadow-xl active:scale-95 transition-all"
               >

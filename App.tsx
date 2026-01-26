@@ -23,15 +23,21 @@ const AppContent: React.FC = () => {
 
   const isAdmin = currentUser?.username === 'admin';
 
-  // FIX: Resolve o problema de inputs escondidos pelo teclado no mobile
+  // Otimização de Foco para Mobile (Teclado Virtual)
   useEffect(() => {
     const handleFocus = (e: FocusEvent) => {
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
-        // Delay para aguardar o teclado do dispositivo abrir completamente
+      const isInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+      
+      if (isInput) {
+        // Delay otimizado para aguardar a animação do teclado no iOS/Android
         setTimeout(() => {
-          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 300);
+          target.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center', // Centraliza o campo para dar margem acima e abaixo
+            inline: 'nearest' 
+          });
+        }, 400); // 400ms é o tempo médio de transição visual do teclado mobile
       }
     };
 

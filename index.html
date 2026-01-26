@@ -1,8 +1,9 @@
+
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" style="scroll-behavior: smooth;">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
     <title>FleetFlow Pro | Gestão de Frota Inteligente</title>
     
     <!-- SEO Meta Tags -->
@@ -23,6 +24,7 @@
         font-family: 'Inter', sans-serif !important;
         font-weight: 700 !important;
         color: #0f172a !important;
+        -webkit-appearance: none; /* Melhora renderização no iOS */
       }
       
       input::placeholder, textarea::placeholder {
@@ -53,6 +55,11 @@
       /* Ajuste para evitar que o conteúdo fique atrás da nav mobile */
       @media (max-width: 768px) {
         .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 60px); }
+        
+        /* Previne o zoom automático indesejado no foco em campos pequenos no iOS */
+        input, select, textarea {
+          font-size: 16px !important;
+        }
       }
     </style>
   <script type="importmap">
@@ -67,7 +74,7 @@
 }
 </script>
 </head>
-  <body class="bg-slate-50 text-slate-900">
+  <body class="bg-slate-50 text-slate-900 overflow-x-hidden">
     <div id="root"></div>
   </body>
 </html>
