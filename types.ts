@@ -151,6 +151,7 @@ export interface Trip {
   plannedArrival?: string;
   startTime: string;
   endTime?: string;
+  endDate?: string;
   startKm: number; 
   distance?: number; 
   observations?: string;
@@ -164,6 +165,7 @@ export interface Trip {
 
 export interface ScheduledTrip extends Omit<Trip, 'startTime' | 'startKm'> {
   scheduledDate: string;
+  scheduledEndDate?: string;
   notes?: string;
 }
 

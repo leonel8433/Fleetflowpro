@@ -82,7 +82,6 @@ const FleetManager: React.FC = () => {
 
   const [newVehicle, setNewVehicle] = useState(initialVehicleState);
 
-  // Fix: Added missing resetFormState function to clear the vehicle form state
   const resetFormState = () => {
     setNewVehicle(initialVehicleState);
     setEditingVehicleId(null);
@@ -129,9 +128,21 @@ const FleetManager: React.FC = () => {
   };
 
   const updateServiceDetail = (catId: string, field: 'cost' | 'notes', value: string) => {
+      // Filtra para permitir apenas números e um ponto decimal se for custo
+      let cleanValue = value;
+      if (field === 'cost') {
+        cleanValue = value.replace(/[^0-9.]/g, '');
+        // Garante apenas um ponto
+        const parts = cleanValue.split('.');
+        if (parts.length > 2) cleanValue = parts[0] + '.' + parts.slice(1).join('');
+      }
+
       setServiceDetails(prev => ({
           ...prev,
-          [catId]: { ...prev[catId], [field]: value }
+          [catId]: { 
+            ...(prev[catId] || { cost: '', notes: '' }), 
+            [field]: cleanValue 
+          }
       }));
   };
 
@@ -679,7 +690,7 @@ const FleetManager: React.FC = () => {
 
                  {/* DETALHAMENTO DE CUSTOS POR SERVIÇO */}
                  {newRecord.categories.length > 0 && (
-                   <div className="space-y-4 animate-in slide-in-from-top-2">
+                   <div className="space-y-4">
                      <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest">Custos Estimados por Serviço</label>
                      <div className="space-y-3">
                        {newRecord.categories.map(catId => {
@@ -689,11 +700,12 @@ const FleetManager: React.FC = () => {
                            <div key={catId} className="flex gap-3 items-center">
                              <div className="flex-1 text-[10px] font-bold uppercase text-slate-600">{cat?.label}</div>
                              <input 
-                               type="number" 
-                               placeholder="Custo (R$)" 
+                               type="text" 
+                               placeholder="0.00" 
                                value={serviceDetails[catId]?.cost || ''}
                                onChange={(e) => updateServiceDetail(catId, 'cost', e.target.value)}
-                               className="w-32 p-3 bg-slate-50 border rounded-xl font-bold text-xs"
+                               onFocus={(e) => e.target.select()}
+                               className="w-32 p-4 bg-white border border-slate-200 rounded-xl font-bold text-xs text-right focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                              />
                            </div>
                          );
@@ -704,7 +716,7 @@ const FleetManager: React.FC = () => {
 
                  {/* SEÇÃO DE PNEUS (QUANDO SELECIONADO) */}
                  {newRecord.categories.includes('tires') && (
-                   <div className="bg-slate-50 p-6 rounded-[2rem] border border-blue-50 space-y-6 animate-in zoom-in-95">
+                   <div className="bg-slate-50 p-6 rounded-[2rem] border border-blue-50 space-y-6">
                       <div className="flex items-center gap-3 border-b border-blue-100 pb-4">
                          <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center">
                             <i className="fas fa-car-side"></i>
@@ -734,10 +746,10 @@ const FleetManager: React.FC = () => {
 
                          {/* DADOS TÉCNICOS PNEUS */}
                          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Marca</label><input placeholder="Ex: Pirelli" value={tireTechnicalInfo.brand} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, brand: e.target.value})} className="w-full p-3 bg-white border rounded-xl font-bold text-xs" /></div>
-                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Modelo</label><input placeholder="Ex: Scorpion" value={tireTechnicalInfo.model} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, model: e.target.value})} className="w-full p-3 bg-white border rounded-xl font-bold text-xs" /></div>
-                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Custo Unitário (R$)</label><input type="number" step="0.01" value={tireTechnicalInfo.cost} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, cost: e.target.value})} className="w-full p-3 bg-white border rounded-xl font-bold text-xs" /></div>
-                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Vida Útil Estimada (KM)</label><input type="number" value={tireTechnicalInfo.lifespan} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, lifespan: e.target.value})} className="w-full p-3 bg-white border rounded-xl font-bold text-xs" /></div>
+                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Marca</label><input placeholder="Ex: Pirelli" value={tireTechnicalInfo.brand} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, brand: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" /></div>
+                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Modelo</label><input placeholder="Ex: Scorpion" value={tireTechnicalInfo.model} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, model: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" /></div>
+                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Custo Unitário (R$)</label><input type="number" step="0.01" value={tireTechnicalInfo.cost} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, cost: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" /></div>
+                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Vida Útil Estimada (KM)</label><input type="number" value={tireTechnicalInfo.lifespan} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, lifespan: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" /></div>
                             <div className="md:col-span-2 p-3 bg-blue-100/50 rounded-xl text-center">
                                <p className="text-[9px] font-bold text-blue-700 uppercase">Custo Total Pneus: R$ {(selectedWheelPositions.length * (parseFloat(tireTechnicalInfo.cost) || 0)).toFixed(2)}</p>
                             </div>
@@ -746,18 +758,18 @@ const FleetManager: React.FC = () => {
                    </div>
                  )}
 
-                 <div className="flex items-center justify-between p-4 bg-slate-900 rounded-2xl text-white">
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Custo Total Previsto da OS</span>
-                    <span className="text-lg font-bold">R$ {totalServicesCost.toFixed(2)}</span>
+                 <div className="flex items-center justify-between p-6 bg-slate-900 rounded-3xl text-white shadow-xl">
+                    <span className="text-xs font-bold uppercase tracking-[0.2em]">Custo Total Previsto da OS</span>
+                    <span className="text-2xl font-black">R$ {totalServicesCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                  </div>
 
-                 <textarea value={newRecord.notes} onChange={(e) => setNewRecord({...newRecord, notes: e.target.value})} placeholder="Informações detalhadas sobre a manutenção, sintomas relatados pelo motorista e solicitações extras..." className="w-full p-6 bg-slate-50 border border-slate-200 rounded-3xl font-bold text-sm min-h-[120px] outline-none focus:ring-2 focus:ring-blue-500" />
+                 <textarea value={newRecord.notes} onChange={(e) => setNewRecord({...newRecord, notes: e.target.value})} placeholder="Informações detalhadas sobre a manutenção, sintomas relatados pelo motorista e solicitações extras..." className="w-full p-6 bg-slate-50 border border-slate-200 rounded-[2rem] font-bold text-sm min-h-[120px] outline-none focus:ring-2 focus:ring-blue-500" />
 
                  {formError && <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-[10px] font-bold uppercase animate-shake">{formError}</div>}
 
                  <div className="flex gap-4 pt-4 border-t">
                     <button onClick={() => setShowMaintenanceForm(false)} className="flex-1 py-4 text-slate-400 uppercase text-[10px] font-bold hover:text-slate-600 transition-colors">Cancelar</button>
-                    <button onClick={handleSubmitMaintenance} disabled={isSubmitting} className="flex-[2] py-4 bg-slate-900 text-white rounded-2xl font-bold uppercase text-[10px] shadow-xl hover:bg-slate-800 transition-all">Salvar Ordem</button>
+                    <button onClick={handleSubmitMaintenance} disabled={isSubmitting} className="flex-[2] py-5 bg-slate-900 text-white rounded-2xl font-bold uppercase text-xs tracking-widest shadow-2xl hover:bg-slate-800 transition-all active:scale-95">Salvar Ordem</button>
                  </div>
               </div>
            </div>

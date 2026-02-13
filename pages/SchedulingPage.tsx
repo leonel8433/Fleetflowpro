@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useFleet } from '../context/FleetContext';
-import { ScheduledTrip, VehicleStatus, Vehicle } from '../types';
+import { ScheduledTrip, VehicleStatus, Vehicle, TripType } from '../types';
 import { checkSPRodizio, getRodizioDayLabel, isLocationSaoPaulo } from '../utils/trafficRules';
 
 const SchedulingPage: React.FC = () => {
@@ -22,9 +22,11 @@ const SchedulingPage: React.FC = () => {
   const [adminJustification, setAdminJustification] = useState('');
 
   const initialFormState = {
+    type: 'STANDARD' as TripType,
     driverId: currentUser?.id || '',
     vehicleId: '',
     scheduledDate: new Date().toISOString().split('T')[0],
+    scheduledEndDate: new Date().toISOString().split('T')[0],
     origin: '',
     destination: '',
     city: '',
@@ -92,32 +94,36 @@ const SchedulingPage: React.FC = () => {
     // 1. BLOQUEIO DE MANUTENÇÃO
     if (vehicle.status === VehicleStatus.MAINTENANCE) return 'MAINTENANCE';
     
-    // 2. CONFLITO DE AGENDA (Mesma data)
-    const isScheduled = scheduledTrips.some(trip => 
-      trip.vehicleId === vehicle.id && 
-      trip.scheduledDate === newSchedule.scheduledDate && 
-      trip.id !== editingTripId
-    );
+    const start = new Date(newSchedule.scheduledDate).getTime();
+    const end = new Date(newSchedule.scheduledEndDate || newSchedule.scheduledDate).getTime();
+
+    // 2. CONFLITO DE AGENDA (Sobreposição de Período)
+    const isScheduled = scheduledTrips.some(trip => {
+      if (trip.vehicleId !== vehicle.id || trip.id === editingTripId) return false;
+      const sStart = new Date(trip.scheduledDate).getTime();
+      const sEnd = new Date(trip.scheduledEndDate || trip.scheduledDate).getTime();
+      return (start <= sEnd && end >= sStart);
+    });
     if (isScheduled) return 'ALREADY_SCHEDULED';
 
     // 3. CONFLITO COM VIAGEM ATIVA
-    const selectedDay = newSchedule.scheduledDate;
-    const hasActiveTrip = activeTrips.some(trip => 
-      trip.vehicleId === vehicle.id && 
-      trip.startTime.split('T')[0] === selectedDay
-    );
+    const hasActiveTrip = activeTrips.some(trip => {
+      if (trip.vehicleId !== vehicle.id) return false;
+      const aStart = new Date(trip.startTime.split('T')[0]).getTime();
+      const aEnd = new Date(trip.endDate || trip.startTime.split('T')[0]).getTime();
+      return (start <= aEnd && end >= aStart);
+    });
     if (hasActiveTrip) return 'ACTIVE_TRIP';
 
-    // 4. VALIDAÇÃO DE RODÍZIO SÃO PAULO
+    // 4. VALIDAÇÃO DE RODÍZIO SÃO PAULO (Baseado no início da viagem)
     if (isDestSaoPaulo) {
       const [year, month, day] = newSchedule.scheduledDate.split('-').map(Number);
-      // Ajuste de fuso para o meio do dia para garantir o dia da semana correto
       const dateObj = new Date(year, month - 1, day, 12, 0, 0);
       if (checkSPRodizio(vehicle.plate, dateObj)) return 'RODIZIO';
     }
     
     return null;
-  }, [newSchedule.scheduledDate, editingTripId, isDestSaoPaulo, scheduledTrips, activeTrips]);
+  }, [newSchedule.scheduledDate, newSchedule.scheduledEndDate, editingTripId, isDestSaoPaulo, scheduledTrips, activeTrips]);
 
   const restrictionInfo = useMemo(() => {
     if (!newSchedule.scheduledDate || !newSchedule.vehicleId) return null;
@@ -126,9 +132,9 @@ const SchedulingPage: React.FC = () => {
       const status = getVehicleConflictStatus(vehicle);
       switch (status) {
         case 'MAINTENANCE': return { type: 'MAINTENANCE', message: `BLOQUEIO: O veículo ${vehicle.plate} está em MANUTENÇÃO.` };
-        case 'ALREADY_SCHEDULED': return { type: 'CONFLICT', message: `CONFLITO: Já existe um agendamento para este veículo nesta data.` };
-        case 'RODIZIO': return { type: 'RODIZIO', message: `RESTRIÇÃO DE RODÍZIO SP: ${getRodizioDayLabel(vehicle.plate)}.` };
-        case 'ACTIVE_TRIP': return { type: 'CONFLICT', message: `CONFLITO: Veículo em uso operacional nesta data.` };
+        case 'ALREADY_SCHEDULED': return { type: 'CONFLICT', message: `CONFLITO: Este veículo já está reservado em um período sobreposto.` };
+        case 'RODIZIO': return { type: 'RODIZIO', message: `RESTRIÇÃO DE RODÍZIO SP: ${getRodizioDayLabel(vehicle.plate)} no início do ciclo.` };
+        case 'ACTIVE_TRIP': return { type: 'CONFLICT', message: `CONFLITO: Veículo em uso operacional neste período.` };
         default: break;
       }
     }
@@ -139,6 +145,11 @@ const SchedulingPage: React.FC = () => {
     e.preventDefault();
     if (!newSchedule.driverId || !newSchedule.vehicleId || !newSchedule.destination || !newSchedule.origin || !newSchedule.city || !newSchedule.state) {
       alert("Preencha todos os campos obrigatórios.");
+      return;
+    }
+
+    if (newSchedule.type === 'WEEKLY_ROUTINE' && !newSchedule.scheduledEndDate) {
+      alert("Para Viagem Semanal, a data de término é obrigatória.");
       return;
     }
 
@@ -182,7 +193,11 @@ const SchedulingPage: React.FC = () => {
       newSchedule.notes
     ].filter(Boolean).join('\n');
 
-    const tripData = { ...newSchedule, notes: finalNotes };
+    const tripData = { 
+      ...newSchedule, 
+      notes: finalNotes,
+      scheduledEndDate: newSchedule.type === 'WEEKLY_ROUTINE' ? newSchedule.scheduledEndDate : newSchedule.scheduledDate
+    };
 
     if (editingTripId) {
       updateScheduledTrip(editingTripId, tripData);
@@ -212,7 +227,21 @@ const SchedulingPage: React.FC = () => {
   };
 
   const handleEditClick = (trip: ScheduledTrip) => {
-    setNewSchedule({ ...trip });
+    // Fix: Explicitly map the fields from ScheduledTrip to the state object to ensure required fields like city and state have string values (even if empty)
+    // and correctly handle optional properties that are required in the local state.
+    setNewSchedule({ 
+      type: trip.type || 'STANDARD',
+      driverId: trip.driverId,
+      vehicleId: trip.vehicleId,
+      scheduledDate: trip.scheduledDate,
+      scheduledEndDate: trip.scheduledEndDate || trip.scheduledDate,
+      origin: trip.origin,
+      destination: trip.destination,
+      city: trip.city || '',
+      state: trip.state || '',
+      notes: trip.notes || '',
+      waypoints: trip.waypoints || []
+    });
     setEditingTripId(trip.id);
     setShowForm(true);
   };
@@ -247,10 +276,29 @@ const SchedulingPage: React.FC = () => {
       {showForm && (
         <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-indigo-100 animate-in fade-in slide-in-from-top-4">
           <form onSubmit={handleAttemptSave} className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Data</label><input type="date" required value={newSchedule.scheduledDate} onChange={(e) => setNewSchedule({ ...newSchedule, scheduledDate: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" /></div>
-              <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Motorista</label><select required value={newSchedule.driverId} onChange={(e) => setNewSchedule({ ...newSchedule, driverId: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" disabled={!isAdmin}><option value="">Selecione...</option>{drivers.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}</select></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div>
+                <label className="block text-[10px] text-slate-400 uppercase mb-2">Tipo de Viagem</label>
+                <select value={newSchedule.type} onChange={(e) => setNewSchedule({ ...newSchedule, type: e.target.value as TripType })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold">
+                  <option value="STANDARD">Viagem Avulsa</option>
+                  <option value="WEEKLY_ROUTINE">Rotina Semanal</option>
+                </select>
+              </div>
+              <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Início</label><input type="date" required value={newSchedule.scheduledDate} onChange={(e) => setNewSchedule({ ...newSchedule, scheduledDate: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" /></div>
+              {newSchedule.type === 'WEEKLY_ROUTINE' && (
+                <div><label className="block text-[10px] text-slate-400 uppercase mb-2">Término</label><input type="date" min={newSchedule.scheduledDate} required value={newSchedule.scheduledEndDate} onChange={(e) => setNewSchedule({ ...newSchedule, scheduledEndDate: e.target.value })} className="w-full p-4 bg-slate-50 border border-emerald-100 rounded-2xl font-bold" /></div>
+              )}
+              <div className={newSchedule.type !== 'WEEKLY_ROUTINE' ? 'lg:col-span-2' : ''}>
+                <label className="block text-[10px] text-slate-400 uppercase mb-2">Motorista</label>
+                <select required value={newSchedule.driverId} onChange={(e) => setNewSchedule({ ...newSchedule, driverId: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" disabled={!isAdmin}>
+                  <option value="">Selecione...</option>
+                  {drivers.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="md:col-span-1">
                 <label className="block text-[10px] text-slate-400 uppercase mb-2">Veículo</label>
                 <select required value={newSchedule.vehicleId} onChange={(e) => setNewSchedule({ ...newSchedule, vehicleId: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold">
                   <option value="">Selecione...</option>
@@ -266,17 +314,14 @@ const SchedulingPage: React.FC = () => {
                   ))}
                 </select>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
+              <div className="md:col-span-1">
                 <label className="block text-[10px] text-slate-400 uppercase mb-2">Estado</label>
                 <select required value={newSchedule.state} onChange={(e) => setNewSchedule({ ...newSchedule, state: e.target.value, city: '' })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold">
                   <option value="">Selecione...</option>
                   {states.map(s => <option key={s.sigla} value={s.sigla}>{s.nome}</option>)}
                 </select>
               </div>
-              <div>
+              <div className="md:col-span-1">
                 <label className="block text-[10px] text-slate-400 uppercase mb-2">Cidade</label>
                 <select required value={newSchedule.city} onChange={(e) => setNewSchedule({ ...newSchedule, city: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" disabled={!newSchedule.state || isLoadingLocs}>
                   <option value="">{isLoadingLocs ? '...' : 'Selecione...'}</option>
@@ -292,7 +337,7 @@ const SchedulingPage: React.FC = () => {
 
             {restrictionInfo && (
               <div className={`p-6 border rounded-3xl ${restrictionInfo.type === 'RODIZIO' ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
-                <p className={`text-[11px] font-bold uppercase mb-4 flex items-center gap-2 ${restrictionInfo.type === 'RODIZIO' ? 'text-amber-800' : 'text-red-800'}`}>
+                <p className={`text-[11px] font-bold uppercase mb-4 flex items-center gap-2 ${restrictionInfo.type === 'RODIZIO' ? 'text-amber-800' : 'text-amber-800'}`}>
                   <i className={`fas ${restrictionInfo.type === 'RODIZIO' ? 'fa-traffic-light' : 'fa-circle-exclamation'}`}></i> 
                   {restrictionInfo.message}
                 </p>
@@ -340,20 +385,29 @@ const SchedulingPage: React.FC = () => {
         {visibleScheduledTrips.map(trip => {
           const vehicle = vehicles.find(v => v.id === trip.vehicleId);
           const isVehicleMaintenance = vehicle?.status === VehicleStatus.MAINTENANCE;
+          const isWeekly = trip.type === 'WEEKLY_ROUTINE';
           
           return (
             <div key={trip.id} className={`bg-white p-6 rounded-[2.5rem] shadow-sm border flex flex-col md:flex-row md:items-center gap-6 group hover:shadow-md transition-all ${isVehicleMaintenance ? 'border-red-50 opacity-80' : 'border-slate-100'}`}>
-              <div className="w-24 text-center p-3 rounded-2xl border bg-slate-50 shrink-0">
-                <span className="block text-2xl text-slate-800 leading-none">{new Date(trip.scheduledDate + 'T12:00:00').getDate()}</span>
-                <span className="text-[10px] uppercase text-slate-400 font-bold mt-1 block">{new Date(trip.scheduledDate + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}</span>
+              <div className={`w-24 text-center p-3 rounded-2xl border shrink-0 ${isWeekly ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50'}`}>
+                <span className={`block text-2xl font-write ${isWeekly ? 'text-emerald-800' : 'text-slate-800'} leading-none`}>
+                  {new Date(trip.scheduledDate + 'T12:00:00').getDate()}
+                </span>
+                <span className="text-[10px] uppercase text-slate-400 font-bold mt-1 block">
+                  {new Date(trip.scheduledDate + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
+                </span>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono text-white ${isVehicleMaintenance ? 'bg-red-400' : 'bg-slate-900'}`}>{vehicle?.plate}</span>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">{vehicle?.model} {isVehicleMaintenance && '• EM MANUTENÇÃO'}</p>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono text-white ${isVehicleMaintenance ? 'bg-red-400' : isWeekly ? 'bg-emerald-600' : 'bg-slate-900'}`}>{vehicle?.plate}</span>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">
+                    {vehicle?.model} {isWeekly && '• SEMANAL'} {isVehicleMaintenance && '• EM MANUTENÇÃO'}
+                  </p>
                 </div>
                 <h4 className="text-lg font-bold truncate text-slate-800">{trip.destination}</h4>
-                <p className="text-[10px] text-slate-400 font-medium italic">{trip.city}, {trip.state}</p>
+                <p className="text-[10px] text-slate-400 font-medium italic">
+                  {trip.city}, {trip.state} {isWeekly && `(até ${new Date((trip.scheduledEndDate || trip.scheduledDate) + 'T12:00:00').toLocaleDateString()})`}
+                </p>
               </div>
               <div className="flex items-center justify-end gap-3 shrink-0">
                 <button onClick={() => handleEditClick(trip)} className="w-12 h-12 rounded-xl bg-slate-50 text-slate-300 hover:bg-indigo-600 hover:text-white flex items-center justify-center border transition-all"><i className="fas fa-edit"></i></button>

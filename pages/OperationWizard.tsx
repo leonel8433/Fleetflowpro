@@ -5,7 +5,7 @@ import { Vehicle, Checklist, Trip, VehicleStatus, TripType } from '../types';
 import { checkSPRodizio, getRodizioDayLabel, isLocationSaoPaulo } from '../utils/trafficRules';
 
 const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => void }> = ({ scheduledTripId, onComplete }) => {
-  const { vehicles, currentUser, startTrip, fines, scheduledTrips } = useFleet();
+  const { vehicles, currentUser, startTrip, fines, scheduledTrips, activeTrips } = useFleet();
   const [step, setStep] = useState(0); 
   const [opType, setOpType] = useState<TripType>('STANDARD');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
@@ -15,6 +15,7 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
     origin: '',
     destination: '',
     startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
     city: '',
     state: '',
     waypoints: [] as string[]
@@ -86,6 +87,7 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
           origin: trip.origin || '',
           destination: trip.destination || '',
           startDate: trip.scheduledDate || new Date().toISOString().split('T')[0],
+          endDate: trip.scheduledEndDate || trip.scheduledDate || new Date().toISOString().split('T')[0],
           city: trip.city || '',
           state: trip.state || '',
           waypoints: trip.waypoints || []
@@ -205,9 +207,10 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
       state: route.state,
       waypoints: route.waypoints,
       startTime: now,
+      endDate: isWeekly ? route.endDate : route.startDate,
       startKm: kmInformado,
       observations: isWeekly 
-        ? `[ABERTURA SEMANAL] Início em: ${route.startDate}\nCondutor: ${currentUser.name}\nVeículo: ${selectedVehicle.plate}\nRota: ${route.origin} -> ${route.destination}` 
+        ? `[ABERTURA SEMANAL] Início em: ${route.startDate} | Fim em: ${route.endDate}\nCondutor: ${currentUser.name}\nVeículo: ${selectedVehicle.plate}\nRota: ${route.origin} -> ${route.destination}` 
         : (adminJustification ? `[JUSTIFICATIVA RODÍZIO SP]: ${adminJustification}\n` : '')
     };
 
@@ -228,6 +231,32 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
   };
 
   const isWeeklyChecklistValid = Object.values(weeklyChecklist).every(v => v);
+
+  // Monitoramento de Conflitos para o Período Selecionado
+  const isVehicleAvailableInRange = (v: Vehicle) => {
+    const start = new Date(route.startDate).getTime();
+    const end = new Date(route.endDate || route.startDate).getTime();
+
+    // 1. Verifica agendamentos
+    const hasConflictingSchedule = scheduledTrips.some(s => {
+      if (s.vehicleId !== v.id) return false;
+      const sStart = new Date(s.scheduledDate).getTime();
+      const sEnd = new Date(s.scheduledEndDate || s.scheduledDate).getTime();
+      return (start <= sEnd && end >= sStart);
+    });
+    if (hasConflictingSchedule) return false;
+
+    // 2. Verifica viagens ativas
+    const hasConflictingActive = activeTrips.some(a => {
+      if (a.vehicleId !== v.id) return false;
+      const aStart = new Date(a.startTime.split('T')[0]).getTime();
+      const aEnd = new Date(a.endDate || a.startTime.split('T')[0]).getTime();
+      return (start <= aEnd && end >= aStart);
+    });
+    if (hasConflictingActive) return false;
+
+    return true;
+  };
 
   return (
     <div className="max-w-4xl mx-auto py-4">
@@ -278,10 +307,16 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-               <div className="md:col-span-2">
+               <div className={opType === 'WEEKLY_ROUTINE' ? 'md:col-span-1' : 'md:col-span-2'}>
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Data de Início</label>
                   <input type="date" value={route.startDate} onChange={(e) => setRoute({...route, startDate: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" />
                </div>
+               {opType === 'WEEKLY_ROUTINE' && (
+                 <div className="md:col-span-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Data de Término</label>
+                    <input type="date" min={route.startDate} value={route.endDate} onChange={(e) => setRoute({...route, endDate: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold border-emerald-200 focus:border-emerald-500" />
+                 </div>
+               )}
                <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Origem (Local de Partida)</label>
                   <input placeholder="Ex: Pátio Principal" value={route.origin} onChange={(e) => setRoute({...route, origin: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" />
@@ -345,7 +380,7 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
               <button onClick={() => setStep(0)} className="text-slate-400 uppercase font-bold text-xs tracking-widest" disabled={!!scheduledTripId}>
                 {scheduledTripId ? 'Viagem Agendada' : 'Voltar'}
               </button>
-              <button disabled={!route.destination || !route.startDate || !route.city} onClick={() => setStep(2)} className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-bold uppercase text-xs shadow-xl active:scale-95 transition-all">Próximo: Veículo</button>
+              <button disabled={!route.destination || !route.startDate || !route.city || (opType === 'WEEKLY_ROUTINE' && !route.endDate)} onClick={() => setStep(2)} className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-bold uppercase text-xs shadow-xl active:scale-95 transition-all">Próximo: Veículo</button>
             </div>
           </div>
         )}
@@ -356,6 +391,7 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
               <div>
                 <h3 className="text-xl font-bold text-slate-800 uppercase tracking-tight">Seleção de Ativo</h3>
                 <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Status: {isDestSaoPaulo ? 'Destino monitorado por rodízio' : 'Rota convencional'}</p>
+                <p className="text-[9px] text-blue-600 font-bold uppercase mt-1">Período: {new Date(route.startDate + 'T12:00:00').toLocaleDateString()} {opType === 'WEEKLY_ROUTINE' ? `até ${new Date(route.endDate + 'T12:00:00').toLocaleDateString()}` : ''}</p>
               </div>
               {isDestSaoPaulo && (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full">
@@ -367,7 +403,7 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {vehicles
-                .filter(v => v.status === VehicleStatus.AVAILABLE || v.id === selectedVehicle?.id)
+                .filter(v => (v.status === VehicleStatus.AVAILABLE || v.id === selectedVehicle?.id) && isVehicleAvailableInRange(v))
                 .map(v => {
                   const isRestricted = isDestSaoPaulo && checkSPRodizio(v.plate, new Date(route.startDate + 'T12:00:00'));
                   const canSelect = !isRestricted || isAdmin || isPreAuthorized;
@@ -403,6 +439,11 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
                     </button>
                   );
                 })}
+              {vehicles.filter(v => (v.status === VehicleStatus.AVAILABLE || v.id === selectedVehicle?.id) && isVehicleAvailableInRange(v)).length === 0 && (
+                <div className="col-span-full py-12 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                  <p className="text-slate-400 font-bold uppercase text-xs">Nenhum veículo disponível para o período selecionado.</p>
+                </div>
+              )}
             </div>
 
             {selectedVehicle && isDestSaoPaulo && checkSPRodizio(selectedVehicle.plate, new Date(route.startDate + 'T12:00:00')) && (
@@ -468,8 +509,10 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
                    <p className="text-sm font-bold text-slate-800 uppercase">{currentUser?.name}</p>
                 </div>
                 <div>
-                   <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Início do Ciclo</label>
-                   <p className="text-sm font-bold text-indigo-600 uppercase">{new Date(route.startDate + 'T12:00:00').toLocaleDateString()}</p>
+                   <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Período do Ciclo</label>
+                   <p className="text-sm font-bold text-indigo-600 uppercase">
+                     {new Date(route.startDate + 'T12:00:00').toLocaleDateString()} até {new Date(route.endDate + 'T12:00:00').toLocaleDateString()}
+                   </p>
                 </div>
                 <div>
                    <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Local de Partida</label>
@@ -482,33 +525,51 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
               </div>
             )}
             
+            {/* CAMPOS DE QUILOMETRAGEM (INICIAL E FINAL) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-200 text-center">
-                 <label className="block text-[10px] text-slate-400 uppercase mb-2 font-bold tracking-widest">Odômetro Inicial (KM)</label>
-                 <input type="number" value={checklist.km} onChange={(e) => setChecklist({ ...checklist, km: parseInt(e.target.value) || 0 })} className="w-full p-4 rounded-2xl border-2 border-slate-200 font-bold text-2xl text-center bg-white focus:border-indigo-500 outline-none" />
+                 <label className="block text-[10px] text-slate-400 uppercase mb-2 font-bold tracking-widest">KM Inicial da Viagem</label>
+                 <input 
+                  type="number" 
+                  value={checklist.km} 
+                  onChange={(e) => setChecklist({ ...checklist, km: parseInt(e.target.value) || 0 })} 
+                  className="w-full p-4 rounded-2xl border-2 border-slate-200 font-bold text-2xl text-center bg-white focus:border-indigo-500 outline-none" 
+                 />
                  <p className="text-[9px] text-slate-400 mt-2 uppercase font-medium">Último KM Registrado: {selectedVehicle?.currentKm}</p>
               </div>
 
               <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-200 text-center">
-                <label className="block text-[10px] text-slate-400 uppercase mb-3 font-bold tracking-widest text-center">Nível de Combustível</label>
-                <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-                  {[
-                    { label: 'C', value: 100 },
-                    { label: '3/4', value: 75 },
-                    { label: '1/2', value: 50 },
-                    { label: '1/4', value: 25 },
-                    { label: 'R', value: 10 }
-                  ].map(level => (
-                    <button 
-                      key={level.label} 
-                      type="button"
-                      onClick={() => setChecklist({ ...checklist, fuelLevel: level.value })}
-                      className={`py-2 px-1 rounded-xl text-[9px] font-bold uppercase border transition-all ${checklist.fuelLevel === level.value ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-100'}`}
-                    >
-                      {level.label}
-                    </button>
-                  ))}
-                </div>
+                 <label className="block text-[10px] text-slate-400 uppercase mb-2 font-bold tracking-widest">KM Final Estimado</label>
+                 <input 
+                  type="number" 
+                  value={checklist.kmFinal} 
+                  onChange={(e) => setChecklist({ ...checklist, kmFinal: parseInt(e.target.value) || 0 })} 
+                  className="w-full p-4 rounded-2xl border-2 border-slate-200 font-bold text-2xl text-center bg-white focus:border-indigo-500 outline-none" 
+                 />
+                 <p className="text-[9px] text-slate-400 mt-2 uppercase font-medium">Previsão de encerramento</p>
+              </div>
+            </div>
+
+            {/* NÍVEL DE COMBUSTÍVEL */}
+            <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-200 text-center">
+              <label className="block text-[10px] text-slate-400 uppercase mb-4 font-bold tracking-widest">Nível de Combustível de Saída</label>
+              <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                {[
+                  { label: 'C', value: 100 },
+                  { label: '3/4', value: 75 },
+                  { label: '1/2', value: 50 },
+                  { label: '1/4', value: 25 },
+                  { label: 'R', value: 10 }
+                ].map(level => (
+                  <button 
+                    key={level.label} 
+                    type="button"
+                    onClick={() => setChecklist({ ...checklist, fuelLevel: level.value })}
+                    className={`py-3 px-1 rounded-2xl text-[10px] font-bold uppercase border transition-all ${checklist.fuelLevel === level.value ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-100'}`}
+                  >
+                    {level.label}
+                  </button>
+                ))}
               </div>
             </div>
 
