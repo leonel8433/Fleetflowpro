@@ -1,14 +1,15 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useFleet } from '../context/FleetContext';
 import { Vehicle, Checklist, Trip, VehicleStatus, TripType } from '../types';
 import { checkSPRodizio, getRodizioDayLabel, isLocationSaoPaulo } from '../utils/trafficRules';
 
 const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => void }> = ({ scheduledTripId, onComplete }) => {
-  const { vehicles, currentUser, startTrip, fines, scheduledTrips, activeTrips } = useFleet();
+  const { vehicles, currentUser, startTrip, fines, scheduledTrips, activeTrips, deleteScheduledTrip } = useFleet();
   const [step, setStep] = useState(0); 
   const [opType, setOpType] = useState<TripType>('STANDARD');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Estados do Roteiro e Localização (IBGE)
   const [route, setRoute] = useState({
@@ -74,8 +75,12 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
     km: 0,
     kmFinal: 0,
     fuelLevel: 100,
-    comments: ''
+    comments: '',
+    damageDescription: '',
+    damagePhoto: ''
   });
+
+  const [showDamageReport, setShowDamageReport] = useState(false);
 
   // Efeito para carregar dados de um agendamento prévio
   useEffect(() => {
@@ -132,18 +137,28 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
   // URL Dinâmica para o Mapa de Pré-visualização
   const mapPreviewUrl = useMemo(() => {
     if (!route.origin && !route.destination) return null;
-    const origin = encodeURIComponent(route.origin);
-    const destination = encodeURIComponent(route.destination);
+    
+    const originStr = route.origin;
+    const destStr = `${route.destination}, ${route.city} - ${route.state}`;
+    
+    const origin = encodeURIComponent(originStr);
+    const destination = encodeURIComponent(destStr);
+    
     const waypoints = route.waypoints.length > 0 
       ? `+to:${route.waypoints.map(wp => encodeURIComponent(wp)).join('+to:')}`
       : '';
     return `https://www.google.com/maps?saddr=${origin}&daddr=${destination}${waypoints}&output=embed`;
-  }, [route.origin, route.destination, route.waypoints]);
+  }, [route.origin, route.destination, route.city, route.state, route.waypoints]);
 
   const handleOpenExternalMaps = () => {
     if (!route.origin && !route.destination) return;
-    const origin = encodeURIComponent(route.origin);
-    const destination = encodeURIComponent(route.destination);
+    
+    const originStr = route.origin;
+    const destStr = `${route.destination}, ${route.city} - ${route.state}`;
+    
+    const origin = encodeURIComponent(originStr);
+    const destination = encodeURIComponent(destStr);
+    
     const waypoints = route.waypoints.length > 0 
       ? `&waypoints=${route.waypoints.map(wp => encodeURIComponent(wp)).join('|')}` 
       : '';
@@ -161,32 +176,52 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
     setRoute(prev => ({ ...prev, waypoints: prev.waypoints.filter((_, i) => i !== index) }));
   };
 
-  const handleStartTrip = () => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setChecklist(prev => ({ ...prev, damagePhoto: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleStartTrip = async () => {
     if (!selectedVehicle || !currentUser) return;
+
+    const driverHasActive = activeTrips.some(t => String(t.driverId) === String(currentUser.id));
+    if (driverHasActive) {
+      alert("⚠️ OPERAÇÃO BLOQUEADA: Você já possui uma jornada em andamento.");
+      return;
+    }
+
+    const vehicleInUse = activeTrips.some(t => t.vehicleId === selectedVehicle.id);
+    if (vehicleInUse) {
+      alert("⚠️ VEÍCULO EM USO: Este ativo não está liberado.");
+      return;
+    }
     
-    // VALIDACAO DE KM INICIAL CRÍTICA
     const kmInformado = checklist.km || 0;
     const kmAtualVeiculo = selectedVehicle.currentKm;
 
     if (kmInformado < kmAtualVeiculo) {
-      alert(`⚠️ ERRO DE QUILOMETRAGEM: O KM inicial digitado (${kmInformado}) não pode ser inferior ao último KM registrado no sistema para este veículo (${kmAtualVeiculo}). Por favor, verifique o odômetro no painel do veículo e corrija o valor.`);
+      alert(`⚠️ KM INVÁLIDO: O KM atual (${kmInformado}) é menor que o último registro (${kmAtualVeiculo}).`);
       return;
     }
 
-    // Validação de Rodízio final antes de iniciar
     if (isDestSaoPaulo && checkSPRodizio(selectedVehicle.plate, new Date(route.startDate + 'T12:00:00'))) {
       if (!isAdmin && !isPreAuthorized) {
-        alert("Erro: Este veículo está em dia de rodízio em São Paulo. Operação bloqueada. Contate a administração para autorização prévia.");
+        alert("Erro: Veículo em rodízio.");
         return;
       } else if (isAdmin && !adminJustification.trim() && !isPreAuthorized) {
-        alert("Administrador, por favor informe a justificativa para utilizar o veículo em dia de rodízio.");
+        alert("Justificativa de rodízio obrigatória.");
         return;
       }
-      
-      // Se o motorista está autorizado, exibimos um último lembrete
-      if (!isAdmin && isPreAuthorized) {
-        alert("⚠️ ATENÇÃO CONDUTOR: Esta viagem em zona de rodízio foi AUTORIZADA previamente pela administração. Prossiga com cautela.");
-      }
+    }
+
+    if (scheduledTripId) {
+      await deleteScheduledTrip(scheduledTripId);
     }
 
     const now = new Date().toISOString();
@@ -195,6 +230,9 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
     if (!isWeekly) {
       handleOpenExternalMaps();
     }
+
+    // Inclusão da Avaria nas observações da viagem
+    const damageLog = showDamageReport && checklist.damageDescription ? `\n[AVARIA RELATADA]: ${checklist.damageDescription}` : '';
 
     const newTrip: Trip = {
       id: Math.random().toString(36).substr(2, 9),
@@ -209,9 +247,9 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
       startTime: now,
       endDate: isWeekly ? route.endDate : route.startDate,
       startKm: kmInformado,
-      observations: isWeekly 
-        ? `[ABERTURA SEMANAL] Início em: ${route.startDate} | Fim em: ${route.endDate}\nCondutor: ${currentUser.name}\nVeículo: ${selectedVehicle.plate}\nRota: ${route.origin} -> ${route.destination}` 
-        : (adminJustification ? `[JUSTIFICATIVA RODÍZIO SP]: ${adminJustification}\n` : '')
+      observations: (isWeekly 
+        ? `[ABERTURA SEMANAL] Início: ${route.startDate} | Fim: ${route.endDate}\nCondutor: ${currentUser.name}\nVeículo: ${selectedVehicle.plate}` 
+        : (adminJustification ? `[JUSTIFICATIVA RODÍZIO SP]: ${adminJustification}\n` : '')) + damageLog
     };
 
     const finalChecklist: Checklist = {
@@ -224,6 +262,8 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
       oilChecked: weeklyChecklist.fluids,
       waterChecked: weeklyChecklist.fluids,
       tiresChecked: weeklyChecklist.tires,
+      damageDescription: showDamageReport ? checklist.damageDescription : '',
+      damagePhoto: showDamageReport ? checklist.damagePhoto : ''
     };
 
     startTrip(newTrip, finalChecklist);
@@ -232,35 +272,23 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
 
   const isWeeklyChecklistValid = Object.values(weeklyChecklist).every(v => v);
 
-  // Monitoramento de Conflitos para o Período Selecionado
   const isVehicleAvailableInRange = (v: Vehicle) => {
     const start = new Date(route.startDate).getTime();
     const end = new Date(route.endDate || route.startDate).getTime();
 
-    // 1. Verifica agendamentos
     const hasConflictingSchedule = scheduledTrips.some(s => {
-      if (s.vehicleId !== v.id) return false;
+      if (s.vehicleId !== v.id || s.id === scheduledTripId) return false;
       const sStart = new Date(s.scheduledDate).getTime();
       const sEnd = new Date(s.scheduledEndDate || s.scheduledDate).getTime();
       return (start <= sEnd && end >= sStart);
     });
     if (hasConflictingSchedule) return false;
 
-    // 2. Verifica viagens ativas
-    const hasConflictingActive = activeTrips.some(a => {
-      if (a.vehicleId !== v.id) return false;
-      const aStart = new Date(a.startTime.split('T')[0]).getTime();
-      const aEnd = new Date(a.endDate || a.startTime.split('T')[0]).getTime();
-      return (start <= aEnd && end >= aStart);
-    });
-    if (hasConflictingActive) return false;
-
     return true;
   };
 
   return (
     <div className="max-w-4xl mx-auto py-4">
-      {/* Indicador de Pontuação da CNH */}
       <div className={`mb-6 p-4 rounded-3xl border flex items-center justify-between ${driverPoints >= 20 ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-100'}`}>
         <div className="flex items-center gap-4">
            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white ${driverPoints >= 20 ? 'bg-red-600' : 'bg-blue-600'}`}>
@@ -525,7 +553,6 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
               </div>
             )}
             
-            {/* CAMPOS DE QUILOMETRAGEM (INICIAL E FINAL) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-200 text-center">
                  <label className="block text-[10px] text-slate-400 uppercase mb-2 font-bold tracking-widest">KM Inicial da Viagem</label>
@@ -550,7 +577,6 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
               </div>
             </div>
 
-            {/* NÍVEL DE COMBUSTÍVEL */}
             <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-200 text-center">
               <label className="block text-[10px] text-slate-400 uppercase mb-4 font-bold tracking-widest">Nível de Combustível de Saída</label>
               <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
@@ -593,10 +619,70 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
                 ))}
             </div>
 
+            {/* SEÇÃO DE AVARIA */}
+            <div className={`p-8 rounded-[2rem] border-2 transition-all ${showDamageReport ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-100'}`}>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${showDamageReport ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                    <i className="fas fa-car-burst"></i>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-800 uppercase tracking-tight">Relatar Avaria Encontrada?</p>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase">Identificou danos no veículo antes de sair?</p>
+                  </div>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setShowDamageReport(!showDamageReport)}
+                  className={`w-14 h-8 rounded-full transition-all relative ${showDamageReport ? 'bg-amber-500' : 'bg-slate-200'}`}
+                >
+                  <div className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-md transition-all ${showDamageReport ? 'left-7' : 'left-1'}`}></div>
+                </button>
+              </div>
+
+              {showDamageReport && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="space-y-2">
+                    <label className="block text-[9px] font-bold text-amber-700 uppercase tracking-widest ml-1">Descrição da Avaria</label>
+                    <textarea 
+                      placeholder="Descreva detalhadamente o dano identificado..." 
+                      value={checklist.damageDescription} 
+                      onChange={(e) => setChecklist({ ...checklist, damageDescription: e.target.value })} 
+                      className="w-full p-5 bg-white border border-amber-200 rounded-2xl font-bold text-sm min-h-[100px] outline-none focus:ring-2 focus:ring-amber-500" 
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-[9px] font-bold text-amber-700 uppercase tracking-widest ml-1">Evidência Fotográfica</label>
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full h-48 bg-white border-2 border-dashed border-amber-300 rounded-[2rem] flex flex-col items-center justify-center overflow-hidden cursor-pointer hover:bg-amber-100/50 transition-all group relative"
+                    >
+                      {checklist.damagePhoto ? (
+                        <>
+                          <img src={checklist.damagePhoto} className="w-full h-full object-cover" alt="Dano" />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <span className="text-white text-[10px] font-bold uppercase tracking-widest">Alterar Foto</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <i className="fas fa-camera text-3xl text-amber-300 group-hover:scale-110 transition-transform"></i>
+                          <span className="text-[10px] font-bold text-amber-400 mt-2 uppercase">Anexar Foto da Avaria</span>
+                          <span className="text-[8px] text-amber-300 mt-1 uppercase">Clique para selecionar ou capturar</span>
+                        </>
+                      )}
+                      <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" capture="environment" className="hidden" />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="space-y-2">
-              <label className="block text-[10px] text-slate-400 uppercase font-bold tracking-widest ml-1">Notas do Condutor</label>
+              <label className="block text-[10px] text-slate-400 uppercase font-bold tracking-widest ml-1">Notas Gerais do Condutor</label>
               <textarea 
-                placeholder="Relate aqui qualquer observação adicional sobre o estado do veículo..." 
+                placeholder="Relate aqui qualquer observação adicional..." 
                 value={checklist.comments} 
                 onChange={(e) => setChecklist({ ...checklist, comments: e.target.value })} 
                 className="w-full p-6 bg-slate-50 border border-slate-200 rounded-[2rem] font-bold text-sm min-h-[120px] outline-none" 

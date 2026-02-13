@@ -4,7 +4,7 @@ import { useFleet } from '../context/FleetContext';
 import { VehicleStatus, Trip } from '../types';
 
 const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNavigate?: (tab: string) => void }> = ({ onStartSchedule, onNavigate }) => {
-  const { vehicles, activeTrips, currentUser, endTrip, updateTrip, cancelTrip } = useFleet();
+  const { vehicles, activeTrips, completedTrips, currentUser, endTrip, updateTrip, cancelTrip } = useFleet();
   
   const isAdmin = currentUser?.username === 'admin';
   const myActiveTrip = useMemo(() => activeTrips.find(t => String(t.driverId) === String(currentUser?.id)), [activeTrips, currentUser]);
@@ -18,15 +18,6 @@ const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNa
   const [cancelReason, setCancelReason] = useState('');
   const [isFinishing, setIsFinishing] = useState(false);
   
-  // Resumo de Status para Admin
-  const fleetStatusSummary = useMemo(() => {
-    return {
-      available: vehicles.filter(v => v.status === VehicleStatus.AVAILABLE).length,
-      inUse: vehicles.filter(v => v.status === VehicleStatus.IN_USE).length,
-      maintenance: vehicles.filter(v => v.status === VehicleStatus.MAINTENANCE).length
-    };
-  }, [vehicles]);
-
   // ESTADOS PARA FECHAMENTO
   const [endKm, setEndKm] = useState<number>(0);
   const [endFuelLevel, setEndFuelLevel] = useState<string>('Completo');
@@ -57,6 +48,7 @@ const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNa
     const refuelLog = `\n[ABASTECIMENTO]: Data: ${refuelDate} | KM: ${refuelKm} | Litros: ${refuelLiters} | R$: ${refuelValue.toFixed(2)}`;
     updateTrip(myActiveTrip.id, { observations: (myActiveTrip.observations || '') + refuelLog });
     
+    // Atualiza o contexto global com o custo do abastecimento (acumulativo)
     const currentFuelExpense = (myActiveTrip.fuelExpense || 0) + refuelValue;
     updateTrip(myActiveTrip.id, { fuelExpense: currentFuelExpense });
 
@@ -67,6 +59,7 @@ const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNa
 
   const confirmFinish = async () => {
     if (myActiveTrip) {
+      // VALIDAÇÃO DE KM: KM FINAL NÃO PODE SER MENOR QUE O INICIAL (IGUAL É PERMITIDO PARA TESTES OU PEQUENOS DESLOCAMENTOS)
       if (endKm < myActiveTrip.startKm) {
         alert(`⚠️ ERRO DE QUILOMETRAGEM: O KM final digitado (${endKm}) não pode ser inferior ao KM registrado na abertura desta viagem (${myActiveTrip.startKm}). Verifique o odômetro no painel.`);
         return;
@@ -98,41 +91,9 @@ const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNa
   return (
     <div className="space-y-6 pb-12">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-800">Operação Geral</h2>
+        <h2 className="text-2xl font-bold text-slate-800">Minha Operação</h2>
         <p className="text-xs text-slate-400 font-medium">{currentUser?.name}</p>
       </div>
-
-      {isAdmin && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-              <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
-                 <i className="fas fa-check-circle"></i>
-              </div>
-              <div>
-                 <p className="text-[10px] font-bold text-slate-400 uppercase">Disponíveis</p>
-                 <p className="text-xl font-bold text-slate-800">{fleetStatusSummary.available} Veículos</p>
-              </div>
-           </div>
-           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
-                 <i className="fas fa-route"></i>
-              </div>
-              <div>
-                 <p className="text-[10px] font-bold text-slate-400 uppercase">Em Uso</p>
-                 <p className="text-xl font-bold text-slate-800">{fleetStatusSummary.inUse} Veículos</p>
-              </div>
-           </div>
-           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-              <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
-                 <i className="fas fa-screwdriver-wrench"></i>
-              </div>
-              <div>
-                 <p className="text-[10px] font-bold text-slate-400 uppercase">Manutenção</p>
-                 <p className="text-xl font-bold text-slate-800">{fleetStatusSummary.maintenance} Veículos</p>
-              </div>
-           </div>
-        </div>
-      )}
 
       {!isAdmin && myActiveTrip && (
         <div className={`rounded-[2.5rem] p-8 shadow-2xl relative animate-in fade-in duration-500 border ${isWeekly ? 'bg-emerald-950 border-emerald-400/20 shadow-emerald-900/10' : 'bg-slate-900 border-white/5'} text-white`}>
@@ -141,6 +102,11 @@ const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNa
               <i className={`fas ${isWeekly ? 'fa-calendar-check' : 'fa-route'}`}></i>
               {isWeekly ? 'Rotina Semanal Ativa' : 'Viagem em Curso'}
             </span>
+            {isWeekly && (
+              <span className="text-[10px] font-bold text-emerald-400 uppercase">
+                Acumulado: {((myActiveTrip.fuelExpense || 0) + (myActiveTrip.otherExpense || 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+            )}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -185,7 +151,7 @@ const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNa
         </div>
       )}
 
-      {/* MODAL REGISTRO ABASTECIMENTO */}
+      {/* MODAL REGISTRO ABASTECIMENTO (DURANTE A SEMANA) */}
       {showRefuelModal && (
         <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 space-y-6">
@@ -193,26 +159,26 @@ const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNa
             <div className="space-y-4">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Data</label>
-                <input type="date" value={refuelDate} onChange={(e) => setRefuelDate(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none" />
+                <input type="date" value={refuelDate} onChange={(e) => setRefuelDate(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Quilometragem (KM)</label>
-                <input type="number" value={refuelKm} onChange={(e) => setRefuelKm(parseInt(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none" />
+                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Quilometragem no Ato (KM)</label>
+                <input type="number" value={refuelKm} onChange={(e) => setRefuelKm(parseInt(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Litros</label>
-                  <input type="number" step="0.01" value={refuelLiters} onChange={(e) => setRefuelLiters(parseFloat(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none" />
+                  <input type="number" step="0.01" value={refuelLiters} onChange={(e) => setRefuelLiters(parseFloat(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Valor (R$)</label>
-                  <input type="number" step="0.01" value={refuelValue} onChange={(e) => setRefuelValue(parseFloat(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none" />
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Valor Pago (R$)</label>
+                  <input type="number" step="0.01" value={refuelValue} onChange={(e) => setRefuelValue(parseFloat(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
               </div>
             </div>
             <div className="flex gap-4 pt-4">
-              <button onClick={() => setShowRefuelModal(false)} className="flex-1 py-4 text-slate-400 uppercase font-bold text-[10px]">Cancelar</button>
-              <button onClick={handleRegisterRefuel} className="flex-[2] py-4 bg-emerald-600 text-white rounded-2xl font-bold uppercase text-xs">Registrar</button>
+              <button onClick={() => setShowRefuelModal(false)} className="flex-1 py-4 text-slate-400 uppercase font-bold text-[10px] tracking-widest">Cancelar</button>
+              <button onClick={handleRegisterRefuel} className="flex-[2] py-4 bg-emerald-600 text-white rounded-2xl font-bold uppercase text-xs shadow-xl tracking-widest shadow-emerald-100">Registrar Diário</button>
             </div>
           </div>
         </div>
@@ -231,9 +197,19 @@ const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNa
             </div>
             <div className="p-10 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Data Encerramento</label><input type="date" value={closingDate} onChange={(e) => setClosingDate(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" /></div>
-                <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Quilometragem Final</label><input type="number" value={endKm} onChange={(e) => setEndKm(parseInt(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
+                <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Data Encerramento</label><input type="date" value={closingDate} onChange={(e) => setClosingDate(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold focus:outline-none focus:border-indigo-500" /></div>
+                <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Quilometragem Final</label><input type="number" value={endKm} onChange={(e) => setEndKm(parseInt(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
               </div>
+
+              {isWeekly && (
+                <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 flex justify-between items-center animate-in slide-in-from-top duration-500">
+                   <div>
+                     <p className="text-[10px] font-bold text-emerald-900 uppercase tracking-widest">Total Percorrido no Ciclo</p>
+                     <p className="text-xs text-emerald-600 font-medium">Km Final - Km Abertura</p>
+                   </div>
+                   <p className="text-4xl font-black text-emerald-600">{totalKmRun} <span className="text-sm">KM</span></p>
+                </div>
+              )}
 
               <div className="space-y-4">
                 <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest ml-1">Nível de Combustível ao Finalizar</label>
@@ -246,19 +222,21 @@ const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNa
 
               <div className="space-y-4">
                 <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest ml-1">Despesas de Outros Serviços</label>
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                   <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Total Adicional (Lavagem, Estacionamento, etc)</label>
-                   <input type="number" step="0.01" placeholder="R$ 0,00" value={otherExpenses || ''} onChange={(e) => setOtherExpenses(parseFloat(e.target.value) || 0)} className="w-full p-2 bg-transparent border-b border-slate-200 font-bold outline-none" />
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                     <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Total Adicional (Lavagem, Estacionamento, etc)</label>
+                     <input type="number" step="0.01" placeholder="R$ 0,00" value={otherExpenses || ''} onChange={(e) => setOtherExpenses(parseFloat(e.target.value) || 0)} className="w-full p-2 bg-transparent border-b border-slate-200 font-bold outline-none" />
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest ml-1">Observações de Encerramento</label>
-                <textarea placeholder="Observações importantes..." value={closingNotes} onChange={(e) => setClosingNotes(e.target.value)} className="w-full p-5 bg-slate-50 border border-slate-200 rounded-[2rem] font-bold text-sm min-h-[100px] outline-none focus:ring-2 focus:ring-indigo-500" />
+                <textarea placeholder="Relate aqui qualquer ocorrência, avaria ou nota importante sobre a viagem..." value={closingNotes} onChange={(e) => setClosingNotes(e.target.value)} className="w-full p-5 bg-slate-50 border border-slate-200 rounded-[2rem] font-bold text-sm min-h-[100px] outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
 
-              <div className="flex gap-4 pt-4 border-t border-slate-100 items-center">
-                <button disabled={isFinishing} onClick={() => setShowFinishModal(false)} className="flex-1 py-5 text-slate-400 uppercase font-bold text-[10px] tracking-widest">Voltar</button>
+              <div className="flex gap-4 pt-6 border-t border-slate-100 items-center">
+                <button disabled={isFinishing} onClick={() => setShowFinishModal(false)} className="flex-1 py-5 text-slate-400 uppercase font-bold text-[10px] tracking-widest hover:text-slate-600 transition-colors">Voltar</button>
                 <button 
                   disabled={isFinishing} 
                   onClick={confirmFinish} 
@@ -277,10 +255,11 @@ const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNa
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 space-y-6">
             <h3 className="text-xl font-bold uppercase text-slate-800 text-center">Cancelar Operação</h3>
-            <textarea autoFocus value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} className="w-full bg-slate-50 p-6 rounded-[2rem] outline-none font-bold text-sm border border-slate-100" placeholder="Motivo..." />
+            <p className="text-xs text-slate-500 text-center">Informe o motivo da interrupção do ciclo.</p>
+            <textarea autoFocus value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} className="w-full bg-slate-50 p-6 rounded-[2rem] outline-none font-bold text-sm border border-slate-100" placeholder="Motivo do cancelamento..." />
             <div className="flex gap-4">
-              <button onClick={() => setShowCancelModal(false)} className="flex-1 py-4 text-slate-400 uppercase font-bold text-[10px]">Sair</button>
-              <button onClick={() => { cancelTrip(myActiveTrip!.id, cancelReason); setShowCancelModal(false); }} disabled={!cancelReason.trim()} className="flex-[2] py-4 bg-red-600 text-white rounded-2xl font-bold uppercase text-xs">Confirmar</button>
+              <button onClick={() => setShowCancelModal(false)} className="flex-1 py-4 text-slate-400 uppercase font-bold text-[10px] tracking-widest">Sair</button>
+              <button onClick={() => { cancelTrip(myActiveTrip!.id, cancelReason); setShowCancelModal(false); }} disabled={!cancelReason.trim()} className="flex-[2] py-4 bg-red-600 text-white rounded-2xl font-bold uppercase text-xs shadow-xl shadow-red-100 transition-all active:scale-95">Confirmar Cancelamento</button>
             </div>
           </div>
         </div>

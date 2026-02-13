@@ -5,7 +5,7 @@ import { ScheduledTrip, VehicleStatus, Vehicle, TripType } from '../types';
 import { checkSPRodizio, getRodizioDayLabel, isLocationSaoPaulo } from '../utils/trafficRules';
 
 const SchedulingPage: React.FC = () => {
-  const { drivers, vehicles, scheduledTrips, activeTrips, completedTrips, addScheduledTrip, updateScheduledTrip, deleteScheduledTrip, currentUser } = useFleet();
+  const { drivers, vehicles, scheduledTrips, activeTrips, currentUser, addScheduledTrip, updateScheduledTrip, deleteScheduledTrip } = useFleet();
   const [showForm, setShowForm] = useState(false);
   const [editingTripId, setEditingTripId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -83,63 +83,85 @@ const SchedulingPage: React.FC = () => {
     return trips.sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
   }, [scheduledTrips, isAdmin, currentUser, searchTerm, vehicles]);
 
-  // Identifica se o destino é São Paulo Capital para aplicar o Rodízio
   const isDestSaoPaulo = useMemo(() => {
     return isLocationSaoPaulo(newSchedule.city, newSchedule.state, newSchedule.destination);
   }, [newSchedule.city, newSchedule.state, newSchedule.destination]);
 
-  const getVehicleConflictStatus = useCallback((vehicle: Vehicle) => {
-    if (!newSchedule.scheduledDate) return null;
+  const getConflictStatus = useCallback((vehicleId: string, driverId: string) => {
+    if (!newSchedule.scheduledDate || !vehicleId || !driverId) return null;
     
-    // 1. BLOQUEIO DE MANUTENÇÃO
-    if (vehicle.status === VehicleStatus.MAINTENANCE) return 'MAINTENANCE';
+    const vehicle = vehicles.find(v => v.id === vehicleId);
+    if (vehicle && vehicle.status === VehicleStatus.MAINTENANCE) return 'MAINTENANCE';
     
-    const start = new Date(newSchedule.scheduledDate).getTime();
-    const end = new Date(newSchedule.scheduledEndDate || newSchedule.scheduledDate).getTime();
+    const normalizeDate = (dStr: string) => new Date(dStr + 'T12:00:00').getTime();
+    
+    // CORREÇÃO CRÍTICA: Definir período de ocupação com base no tipo da viagem
+    const effectiveStart = newSchedule.scheduledDate;
+    const effectiveEnd = newSchedule.type === 'WEEKLY_ROUTINE' 
+      ? (newSchedule.scheduledEndDate || newSchedule.scheduledDate) 
+      : newSchedule.scheduledDate;
 
-    // 2. CONFLITO DE AGENDA (Sobreposição de Período)
-    const isScheduled = scheduledTrips.some(trip => {
-      if (trip.vehicleId !== vehicle.id || trip.id === editingTripId) return false;
-      const sStart = new Date(trip.scheduledDate).getTime();
-      const sEnd = new Date(trip.scheduledEndDate || trip.scheduledDate).getTime();
+    const start = normalizeDate(effectiveStart);
+    const end = normalizeDate(effectiveEnd);
+
+    // 1. CONFLITO DE VEÍCULO NA AGENDA (Impede duplicidade de qualquer local/tipo)
+    const hasVehicleOverlap = scheduledTrips.some(trip => {
+      if (trip.id === editingTripId) return false;
+      if (trip.vehicleId !== vehicleId) return false;
+
+      const sStart = normalizeDate(trip.scheduledDate);
+      const sEnd = normalizeDate(trip.scheduledEndDate || trip.scheduledDate);
       return (start <= sEnd && end >= sStart);
     });
-    if (isScheduled) return 'ALREADY_SCHEDULED';
+    if (hasVehicleOverlap) return 'VEHICLE_OVERLAP';
 
-    // 3. CONFLITO COM VIAGEM ATIVA
-    const hasActiveTrip = activeTrips.some(trip => {
-      if (trip.vehicleId !== vehicle.id) return false;
-      const aStart = new Date(trip.startTime.split('T')[0]).getTime();
-      const aEnd = new Date(trip.endDate || trip.startTime.split('T')[0]).getTime();
+    // 2. CONFLITO DE MOTORISTA NA AGENDA
+    const hasDriverOverlap = scheduledTrips.some(trip => {
+      if (trip.id === editingTripId) return false;
+      if (trip.driverId !== driverId) return false;
+
+      const sStart = normalizeDate(trip.scheduledDate);
+      const sEnd = normalizeDate(trip.scheduledEndDate || trip.scheduledDate);
+      return (start <= sEnd && end >= sStart);
+    });
+    if (hasDriverOverlap) return 'DRIVER_OVERLAP';
+
+    // 3. CONFLITO COM OPERAÇÃO ATIVA
+    const hasActiveConflict = activeTrips.some(trip => {
+      const sameVehicle = trip.vehicleId === vehicleId;
+      const sameDriver = trip.driverId === driverId;
+      if (!sameVehicle && !sameDriver) return false;
+
+      const aStart = normalizeDate(trip.startTime.split('T')[0]);
+      const aEnd = trip.endDate ? normalizeDate(trip.endDate) : aStart; 
       return (start <= aEnd && end >= aStart);
     });
-    if (hasActiveTrip) return 'ACTIVE_TRIP';
+    if (hasActiveConflict) return 'ACTIVE_CONFLICT';
 
-    // 4. VALIDAÇÃO DE RODÍZIO SÃO PAULO (Baseado no início da viagem)
-    if (isDestSaoPaulo) {
-      const [year, month, day] = newSchedule.scheduledDate.split('-').map(Number);
-      const dateObj = new Date(year, month - 1, day, 12, 0, 0);
+    // 4. RODÍZIO SP
+    if (isDestSaoPaulo && vehicle) {
+      const dateObj = new Date(newSchedule.scheduledDate + 'T12:00:00');
       if (checkSPRodizio(vehicle.plate, dateObj)) return 'RODIZIO';
     }
     
     return null;
-  }, [newSchedule.scheduledDate, newSchedule.scheduledEndDate, editingTripId, isDestSaoPaulo, scheduledTrips, activeTrips]);
+  }, [newSchedule.scheduledDate, newSchedule.scheduledEndDate, newSchedule.type, editingTripId, isDestSaoPaulo, scheduledTrips, activeTrips, vehicles]);
 
   const restrictionInfo = useMemo(() => {
-    if (!newSchedule.scheduledDate || !newSchedule.vehicleId) return null;
+    if (!newSchedule.scheduledDate || !newSchedule.vehicleId || !newSchedule.driverId) return null;
+    const status = getConflictStatus(newSchedule.vehicleId, newSchedule.driverId);
     const vehicle = vehicles.find(v => v.id === newSchedule.vehicleId);
-    if (vehicle) {
-      const status = getVehicleConflictStatus(vehicle);
-      switch (status) {
-        case 'MAINTENANCE': return { type: 'MAINTENANCE', message: `BLOQUEIO: O veículo ${vehicle.plate} está em MANUTENÇÃO.` };
-        case 'ALREADY_SCHEDULED': return { type: 'CONFLICT', message: `CONFLITO: Este veículo já está reservado em um período sobreposto.` };
-        case 'RODIZIO': return { type: 'RODIZIO', message: `RESTRIÇÃO DE RODÍZIO SP: ${getRodizioDayLabel(vehicle.plate)} no início do ciclo.` };
-        case 'ACTIVE_TRIP': return { type: 'CONFLICT', message: `CONFLITO: Veículo em uso operacional neste período.` };
-        default: break;
-      }
+    const driver = drivers.find(d => d.id === newSchedule.driverId);
+
+    switch (status) {
+      case 'MAINTENANCE': return { type: 'BLOCK', message: `BLOQUEIO: O veículo ${vehicle?.plate} está em MANUTENÇÃO.` };
+      case 'VEHICLE_OVERLAP': return { type: 'BLOCK', message: `CONFLITO: O veículo ${vehicle?.plate} já está reservado para outro local neste período.` };
+      case 'DRIVER_OVERLAP': return { type: 'BLOCK', message: `CONFLITO: O motorista ${driver?.name} já possui outro agendamento neste período.` };
+      case 'RODIZIO': return { type: 'RODIZIO', message: `RESTRIÇÃO DE RODÍZIO SP: ${getRodizioDayLabel(vehicle?.plate || '')} na data inicial.` };
+      case 'ACTIVE_CONFLICT': return { type: 'BLOCK', message: `BLOQUEIO: Veículo ou Motorista em trânsito no período selecionado.` };
+      default: return null;
     }
-    return null;
-  }, [getVehicleConflictStatus, newSchedule.vehicleId, newSchedule.scheduledDate, vehicles]);
+  }, [getConflictStatus, newSchedule.vehicleId, newSchedule.driverId, newSchedule.scheduledDate, vehicles, drivers]);
 
   const handleAttemptSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,33 +170,9 @@ const SchedulingPage: React.FC = () => {
       return;
     }
 
-    if (newSchedule.type === 'WEEKLY_ROUTINE' && !newSchedule.scheduledEndDate) {
-      alert("Para Viagem Semanal, a data de término é obrigatória.");
-      return;
-    }
-
-    // Validação de Manutenção para Salvar
-    if (restrictionInfo?.type === 'MAINTENANCE') {
+    if (restrictionInfo?.type === 'BLOCK') {
       alert(restrictionInfo.message);
       return;
-    }
-
-    // Validação de Conflitos para Salvar
-    if (restrictionInfo?.type === 'CONFLICT') {
-      alert(restrictionInfo.message);
-      return;
-    }
-
-    // Validação de Rodízio para Salvar
-    if (restrictionInfo?.type === 'RODIZIO') {
-      if (!isAdmin) {
-        alert("Agendamento não permitido: Veículo com restrição de rodízio em São Paulo para esta data.");
-        return;
-      }
-      if (!adminJustification.trim()) {
-        alert("Erro: Para veículos em rodízio, a justificativa administrativa é obrigatória.");
-        return;
-      }
     }
 
     if (editingTripId) {
@@ -227,8 +225,6 @@ const SchedulingPage: React.FC = () => {
   };
 
   const handleEditClick = (trip: ScheduledTrip) => {
-    // Fix: Explicitly map the fields from ScheduledTrip to the state object to ensure required fields like city and state have string values (even if empty)
-    // and correctly handle optional properties that are required in the local state.
     setNewSchedule({ 
       type: trip.type || 'STANDARD',
       driverId: trip.driverId,
@@ -253,10 +249,8 @@ const SchedulingPage: React.FC = () => {
     setShowForm(false);
   };
 
-  // Lógica para desabilitar o botão de envio
   const isSubmitDisabled = 
-    restrictionInfo?.type === 'MAINTENANCE' || 
-    restrictionInfo?.type === 'CONFLICT' ||
+    restrictionInfo?.type === 'BLOCK' || 
     (restrictionInfo?.type === 'RODIZIO' && (!isAdmin || !adminJustification.trim()));
 
   return (
@@ -337,7 +331,7 @@ const SchedulingPage: React.FC = () => {
 
             {restrictionInfo && (
               <div className={`p-6 border rounded-3xl ${restrictionInfo.type === 'RODIZIO' ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
-                <p className={`text-[11px] font-bold uppercase mb-4 flex items-center gap-2 ${restrictionInfo.type === 'RODIZIO' ? 'text-amber-800' : 'text-amber-800'}`}>
+                <p className="text-[11px] font-bold uppercase mb-4 flex items-center gap-2">
                   <i className={`fas ${restrictionInfo.type === 'RODIZIO' ? 'fa-traffic-light' : 'fa-circle-exclamation'}`}></i> 
                   {restrictionInfo.message}
                 </p>

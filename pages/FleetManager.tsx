@@ -128,11 +128,9 @@ const FleetManager: React.FC = () => {
   };
 
   const updateServiceDetail = (catId: string, field: 'cost' | 'notes', value: string) => {
-      // Filtra para permitir apenas números e um ponto decimal se for custo
       let cleanValue = value;
       if (field === 'cost') {
         cleanValue = value.replace(/[^0-9.]/g, '');
-        // Garante apenas um ponto
         const parts = cleanValue.split('.');
         if (parts.length > 2) cleanValue = parts[0] + '.' + parts.slice(1).join('');
       }
@@ -258,7 +256,6 @@ const FleetManager: React.FC = () => {
     e.preventDefault();
     if (!resolvingMaintenance?.record) return;
 
-    // VALIDACAO DE KM NA LIBERACAO DA MANUTENCAO
     if (resolveKm < resolvingMaintenance.record.km) {
       alert(`ERRO DE QUILOMETRAGEM: O KM de saída (${resolveKm}) não pode ser inferior ao KM de entrada na oficina (${resolvingMaintenance.record.km}).`);
       return;
@@ -405,28 +402,128 @@ const FleetManager: React.FC = () => {
           <button onClick={() => { setFormError(null); setShowMaintenanceForm(!showMaintenanceForm); setShowVehicleForm(false); }} className={`px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all ${showMaintenanceForm ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 border border-slate-200'}`}>
             <i className="fas fa-screwdriver-wrench"></i> Nova Manutenção
           </button>
-          <button onClick={() => { if(showVehicleForm) { setShowVehicleForm(false); setEditingVehicleId(null); setNewVehicle(initialVehicleState); } else { resetFormState(); setShowVehicleForm(true); } }} className="px-4 py-2.5 rounded-xl font-bold bg-blue-600 text-white flex items-center gap-2">
-             <i className="fas fa-plus"></i> {editingVehicleId ? 'Editar Veículo' : 'Novo Veículo'}
+          <button onClick={() => { if(showVehicleForm) { setShowVehicleForm(false); setEditingVehicleId(null); setNewVehicle(initialVehicleState); } else { resetFormState(); setShowVehicleForm(true); } }} className="px-4 py-2.5 rounded-xl font-bold bg-blue-600 text-white flex items-center gap-2 shadow-lg">
+             <i className="fas fa-plus"></i> {editingVehicleId ? 'Editar' : 'Novo Veículo'}
           </button>
         </div>
       </div>
 
-      {tireAlertsSummary.length > 0 && (
-        <div className="bg-red-50 border border-red-100 p-6 rounded-[2rem] animate-in slide-in-from-top-4 duration-500">
-           <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-red-600 text-white rounded-xl flex items-center justify-center shadow-lg">
-                 <i className="fas fa-triangle-exclamation"></i>
+      {showMaintenanceForm && (
+        <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-slate-100 animate-in fade-in slide-in-from-top-4 overflow-hidden">
+          <div className="flex justify-between items-center mb-8">
+             <h3 className="text-xl font-bold text-slate-800 uppercase tracking-tight">Abertura de Ordem de Serviço</h3>
+             <button onClick={() => setShowMaintenanceForm(false)} className="text-slate-400 hover:text-red-500"><i className="fas fa-times text-xl"></i></button>
+          </div>
+
+          <form onSubmit={handleSubmitMaintenance} className="space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Veículo</label>
+                <select required value={newRecord.vehicleId} onChange={(e) => setNewRecord({...newRecord, vehicleId: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold">
+                  <option value="">Selecione...</option>
+                  {vehicles.map(v => <option key={v.id} value={v.id} disabled={v.status === VehicleStatus.MAINTENANCE}>{v.plate} - {v.model} {v.status === VehicleStatus.MAINTENANCE ? '(JÁ EM MANUT.)' : ''}</option>)}
+                </select>
               </div>
-              <h3 className="text-sm font-write text-red-800 uppercase tracking-widest">Atenção: Pneus em Limite de Vida Útil</h3>
-           </div>
-           <div className="flex flex-wrap gap-3">
-              {tireAlertsSummary.slice(0, 3).map((alert, i) => (
-                <div key={i} className="bg-white/60 px-4 py-2 rounded-2xl border border-red-200 flex items-center gap-3">
-                   <span className="text-[10px] font-bold text-slate-700">{alert.vehicle.plate}</span>
-                   <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-600 uppercase">Restam {alert.remaining}km</span>
-                </div>
-              ))}
-           </div>
+              <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Data de Entrada</label><input type="date" value={newRecord.date} onChange={(e) => setNewRecord({...newRecord, date: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" /></div>
+              <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">KM na Entrada</label><input type="number" placeholder={selectedVehicleForMaintenance?.currentKm?.toString() || '0'} value={newRecord.km} onChange={(e) => setNewRecord({...newRecord, km: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" /></div>
+            </div>
+
+            <div className="space-y-6">
+               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Serviços Solicitados</p>
+               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                 {MAINTENANCE_CATEGORIES.map(cat => (
+                   <button key={cat.id} type="button" onClick={() => toggleCategorySelection(cat.id)} className={`p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all ${newRecord.categories.includes(cat.id) ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}>
+                      <i className={`fas ${cat.icon} text-lg ${newRecord.categories.includes(cat.id) ? 'text-white' : cat.color}`}></i>
+                      <span className="text-[9px] font-bold uppercase">{cat.label}</span>
+                   </button>
+                 ))}
+               </div>
+            </div>
+
+            {newRecord.categories.length > 0 && (
+              <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-6 animate-in slide-in-from-bottom-2">
+                 <h4 className="text-[10px] font-bold text-slate-800 uppercase tracking-widest border-b pb-4">Detalhamento Financeiro e Técnico</h4>
+                 
+                 <div className="space-y-6 divide-y divide-slate-200">
+                    {newRecord.categories.map(catId => {
+                        const cat = MAINTENANCE_CATEGORIES.find(c => c.id === catId);
+                        if (catId === 'tires') return (
+                          <div key={catId} className="pt-6">
+                            <div className="flex items-center gap-2 mb-4">
+                              <i className="fas fa-car-rear text-emerald-500"></i>
+                              <span className="text-[11px] font-bold uppercase text-slate-700">Troca de Pneus (Selecione no Gráfico)</span>
+                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                                <div className="flex justify-center bg-white p-6 rounded-3xl border border-slate-100">
+                                   <div className="relative w-40 h-64 bg-slate-50 border-2 border-slate-200 rounded-[2rem] flex flex-col justify-between p-6">
+                                      <div className="flex justify-between">
+                                         <button type="button" onClick={() => toggleWheelPosition('FL')} className={`w-10 h-14 rounded-lg border-2 transition-all flex items-center justify-center font-bold text-[10px] ${selectedWheelPositions.includes('FL') ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-300'}`}>FL</button>
+                                         <button type="button" onClick={() => toggleWheelPosition('FR')} className={`w-10 h-14 rounded-lg border-2 transition-all flex items-center justify-center font-bold text-[10px] ${selectedWheelPositions.includes('FR') ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-300'}`}>FR</button>
+                                      </div>
+                                      <div className="flex justify-between">
+                                         <button type="button" onClick={() => toggleWheelPosition('RL')} className={`w-10 h-14 rounded-lg border-2 transition-all flex items-center justify-center font-bold text-[10px] ${selectedWheelPositions.includes('RL') ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-300'}`}>RL</button>
+                                         <button type="button" onClick={() => toggleWheelPosition('RR')} className={`w-10 h-14 rounded-lg border-2 transition-all flex items-center justify-center font-bold text-[10px] ${selectedWheelPositions.includes('RR') ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-300'}`}>RR</button>
+                                      </div>
+                                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[8px] font-black text-slate-200 uppercase tracking-[0.3em] rotate-90">Eixos</div>
+                                   </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                   <div className="md:col-span-2 bg-emerald-50 px-4 py-2 rounded-xl text-[10px] font-bold text-emerald-700 uppercase">Configuração Técnica dos Pneus</div>
+                                   <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Marca</label><input required={newRecord.categories.includes('tires')} value={tireTechnicalInfo.brand} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, brand: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold" /></div>
+                                   <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Custo Unitário</label><input required={newRecord.categories.includes('tires')} type="number" step="0.01" value={tireTechnicalInfo.cost} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, cost: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold" /></div>
+                                   <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Vida Útil (KM)</label><input type="number" value={tireTechnicalInfo.lifespan} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, lifespan: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold" /></div>
+                                   <div className="flex items-end">
+                                      <div className="w-full p-3 bg-slate-900 text-white rounded-xl flex justify-between items-center">
+                                         <span className="text-[9px] font-bold uppercase tracking-widest">Total Pneus</span>
+                                         <span className="text-xs font-bold">R$ {(selectedWheelPositions.length * (parseFloat(tireTechnicalInfo.cost) || 0)).toFixed(2)}</span>
+                                      </div>
+                                   </div>
+                                </div>
+                            </div>
+                          </div>
+                        );
+
+                        return (
+                          <div key={catId} className="pt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                             <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${cat?.bg}`}>
+                                   <i className={`fas ${cat?.icon} ${cat?.color} text-xs`}></i>
+                                </div>
+                                <span className="text-[11px] font-bold uppercase text-slate-700">{cat?.label}</span>
+                             </div>
+                             <div>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Custo do Serviço</label>
+                                <div className="relative">
+                                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] font-bold">R$</span>
+                                   <input type="text" placeholder="0.00" value={serviceDetails[catId]?.cost || ''} onChange={(e) => updateServiceDetail(catId, 'cost', e.target.value)} className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold" />
+                                </div>
+                             </div>
+                             <div>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Notas do Prestador</label>
+                                <input type="text" placeholder="Peças, detalhes, garantia..." value={serviceDetails[catId]?.notes || ''} onChange={(e) => updateServiceDetail(catId, 'notes', e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold" />
+                             </div>
+                          </div>
+                        );
+                    })}
+                 </div>
+
+                 <div className="pt-8 border-t flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div className="text-center md:text-left">
+                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Custo Estimado da OS</p>
+                       <p className="text-3xl font-write text-slate-900">R$ {totalServicesCost.toFixed(2)}</p>
+                    </div>
+                    <textarea placeholder="Observações Administrativas Gerais..." value={newRecord.notes} onChange={(e) => setNewRecord({...newRecord, notes: e.target.value})} className="flex-1 w-full max-w-md p-4 bg-white border border-slate-200 rounded-2xl text-xs font-bold outline-none" />
+                 </div>
+              </div>
+            )}
+            
+            {formError && <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-xs font-bold animate-shake">{formError}</div>}
+            
+            <div className="flex justify-end gap-3 pt-4">
+               <button type="button" onClick={() => setShowMaintenanceForm(false)} className="px-6 py-4 text-slate-400 uppercase text-[10px] font-bold">Cancelar</button>
+               <button type="submit" disabled={isSubmitting} className="bg-slate-900 text-white px-16 py-5 rounded-2xl font-bold uppercase text-xs shadow-xl active:scale-95 transition-all">Abrir Ordem de Serviço</button>
+            </div>
+          </form>
         </div>
       )}
 
@@ -468,6 +565,13 @@ const FleetManager: React.FC = () => {
           const vehicleTireAlerts = tireAlertsSummary.filter(a => a.vehicle.id === v.id);
           const hasTireAlert = vehicleTireAlerts.length > 0;
 
+          // Badges de Status Refinados
+          const statusConfig = {
+            [VehicleStatus.AVAILABLE]: { label: 'Disponível', color: 'bg-emerald-50 text-emerald-600 border-emerald-100', dot: 'bg-emerald-500', icon: 'fa-check-circle' },
+            [VehicleStatus.IN_USE]: { label: 'Em Uso', color: 'bg-blue-50 text-blue-600 border-blue-100', dot: 'bg-blue-500', icon: 'fa-route' },
+            [VehicleStatus.MAINTENANCE]: { label: 'Manutenção', color: 'bg-amber-50 text-amber-600 border-amber-100', dot: 'bg-amber-500', icon: 'fa-screwdriver-wrench' }
+          }[v.status];
+
           return (
             <div key={v.id} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col group hover:shadow-md transition-all relative overflow-hidden">
               <div className="flex justify-between items-start mb-6">
@@ -483,35 +587,16 @@ const FleetManager: React.FC = () => {
 
               <div className="space-y-4 mb-6">
                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${v.status === VehicleStatus.AVAILABLE ? 'bg-emerald-500' : v.status === VehicleStatus.IN_USE ? 'bg-blue-500' : 'bg-amber-500'}`}></span>
-                        <span className={`text-[10px] font-bold uppercase ${v.status === VehicleStatus.MAINTENANCE ? 'text-amber-600' : 'text-slate-400'}`}>
-                          {v.status === VehicleStatus.AVAILABLE ? 'Disponível' : v.status === VehicleStatus.IN_USE ? 'Em Uso' : 'Em Manutenção'}
-                        </span>
-                        
-                        {v.status === VehicleStatus.MAINTENANCE && (
-                          <div className="group relative">
-                            <div className="bg-amber-100 text-amber-600 w-5 h-5 rounded-lg flex items-center justify-center animate-pulse cursor-help">
-                              <i className="fas fa-screwdriver-wrench text-[10px]"></i>
-                            </div>
-                            <div className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-3 bg-slate-900 text-white text-[9px] rounded-xl whitespace-nowrap shadow-2xl z-50">
-                              {maintenanceRecords.filter(r => r.vehicleId === v.id && !r.returnDate).map(r => (
-                                <div key={r.id}>
-                                  <p className="font-bold uppercase mb-1">Serviço: {r.serviceType}</p>
-                                  <p className="opacity-70 font-medium">Entrada: {new Date(r.date).toLocaleDateString()}</p>
-                                </div>
-                              ))}
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
-                            </div>
-                          </div>
-                        )}
+                    <div className="flex flex-col gap-1.5">
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${statusConfig.color} w-fit`}>
+                        <i className={`fas ${statusConfig.icon} text-[10px]`}></i>
+                        <span className="text-[9px] font-bold uppercase tracking-wider">{statusConfig.label}</span>
                       </div>
 
                       {hasTireAlert && (
                         <div className="flex items-center gap-1.5 px-2 py-1 bg-red-50 text-red-600 rounded-lg animate-pulse border border-red-100 w-fit">
                           <i className="fas fa-triangle-exclamation text-[10px]"></i>
-                          <span className="text-[8px] font-bold uppercase tracking-tight">Alerta: Pneu em Breve (&lt; 2000km)</span>
+                          <span className="text-[8px] font-bold uppercase tracking-tight">Pneu em Breve (&lt; 2km)</span>
                         </div>
                       )}
                     </div>
@@ -558,7 +643,7 @@ const FleetManager: React.FC = () => {
                               <div className="text-right">
                                 <p className={`text-[9px] font-bold ${isCritical ? 'text-red-600' : 'text-blue-600'}`}>{tc.km.toLocaleString()} KM</p>
                                 <p className={`text-[8px] font-bold uppercase tracking-tighter ${isCritical ? 'text-red-600 animate-pulse' : 'text-slate-400'}`}>
-                                  {isCritical ? `Faltam ${remainingKm} KM para troca!` : `Restam aprox. ${remainingKm} KM`}
+                                  {isCritical ? `Faltam ${remainingKm} KM!` : `Restam aprox. ${remainingKm} KM`}
                                 </p>
                               </div>
                             </div>
@@ -591,186 +676,60 @@ const FleetManager: React.FC = () => {
         })}
       </div>
 
-      {/* Modal Resolvendo Manutenção */}
+      {/* MODAL DE LIBERAÇÃO DE VEÍCULO (FECHAMENTO DE MANUTENÇÃO) */}
       {resolvingMaintenance && (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95">
-             <div className="p-8 bg-emerald-600 text-white flex justify-between items-center">
-                <div>
-                   <h3 className="text-xl font-bold uppercase tracking-tight">Liberar Veículo</h3>
-                   <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Finalizar Ordem de Serviço</p>
-                </div>
-                <i className="fas fa-check-double text-3xl"></i>
-             </div>
-             <div className="p-10 space-y-6 max-h-[85vh] overflow-y-auto custom-scrollbar">
-                <div className="grid grid-cols-2 gap-4">
-                   <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Data de Saída</label>
-                      <input type="datetime-local" value={resolveDate} onChange={(e) => setResolveDate(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
-                   </div>
-                   <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">KM de Saída</label>
-                      <input type="number" value={resolveKm} onChange={(e) => setResolveKm(parseInt(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
-                   </div>
-                </div>
-
-                <div className="space-y-3">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Custo Total Realizado (R$)</label>
-                   <input type="number" step="0.01" value={resolveCost} onChange={(e) => setResolveCost(e.target.value)} placeholder="0.00" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-lg" />
-                </div>
-
-                <div className="space-y-4">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest">Validação Final de Serviços</label>
-                   <div className="space-y-2">
-                      {resolvingMaintenance.record?.categories?.map(catId => (
-                         <button key={catId} onClick={() => toggleChecklistItem(catId)} className={`w-full p-4 rounded-2xl border-2 flex items-center justify-between transition-all ${checkedItems.includes(catId) ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-slate-100 text-slate-400'}`}>
-                            <span className="text-[10px] font-bold uppercase">{MAINTENANCE_CATEGORIES.find(c => c.id === catId)?.label}</span>
-                            <i className={`fas ${checkedItems.includes(catId) ? 'fa-check-circle' : 'fa-circle'}`}></i>
-                         </button>
-                      ))}
-                   </div>
-                </div>
-
-                <div className="space-y-2">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1 block">Anotações / Intercorrências da Manutenção</label>
-                   <textarea 
-                     placeholder="Descreva aqui qualquer detalhe técnico relevante, peças substituídas ou problemas identificados durante a execução do serviço..." 
-                     value={closingNotes} 
-                     onChange={(e) => setClosingNotes(e.target.value)} 
-                     className="w-full p-5 bg-slate-50 border border-slate-200 rounded-3xl font-bold text-sm min-h-[120px] outline-none focus:ring-2 focus:ring-emerald-500"
-                   />
-                </div>
-
-                <div className="flex gap-4 pt-4 border-t border-slate-100">
-                   <button onClick={() => setResolvingMaintenance(null)} className="flex-1 py-4 text-slate-400 uppercase text-[10px] font-bold">Voltar</button>
-                   <button onClick={handleResolveMaintenance} className="flex-[2] py-4 bg-emerald-600 text-white rounded-2xl font-bold uppercase text-[10px] shadow-xl">Finalizar OS</button>
-                </div>
-             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Nova Manutenção */}
-      {showMaintenanceForm && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in">
-           <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95">
-              <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
-                 <div>
-                    <h3 className="text-xl font-bold uppercase tracking-tight">Nova Ordem de Serviço</h3>
-                    <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest">Manutenção Preventiva / Corretiva</p>
-                 </div>
-                 <i className="fas fa-wrench text-3xl opacity-20"></i>
+        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-md animate-in fade-in duration-300">
+           <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
+              <div className="p-10 bg-emerald-600 text-white">
+                 <h3 className="text-2xl font-bold uppercase tracking-tight">Checklist de Liberação</h3>
+                 <p className="text-[10px] font-bold text-emerald-100 uppercase mt-1 tracking-widest">Veículo: {vehicles.find(v => v.id === resolvingMaintenance.vehicleId)?.plate}</p>
               </div>
-              <div className="p-10 space-y-6 max-h-[85vh] overflow-y-auto custom-scrollbar">
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-10 space-y-8">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                       <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Veículo</label>
-                       <select value={newRecord.vehicleId} onChange={(e) => setNewRecord({...newRecord, vehicleId: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-xs">
-                          <option value="">Selecione...</option>
-                          {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} - {v.model}</option>)}
-                       </select>
+                       <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Data de Saída</label>
+                       <input type="datetime-local" value={resolveDate} onChange={(e) => setResolveDate(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" />
                     </div>
                     <div>
-                       <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Data de Entrada</label>
-                       <input type="date" value={newRecord.date} onChange={(e) => setNewRecord({...newRecord, date: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
+                       <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">KM na Saída</label>
+                       <input type="number" value={resolveKm} onChange={(e) => setResolveKm(parseInt(e.target.value) || 0)} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold focus:ring-2 focus:ring-emerald-500 outline-none" />
                     </div>
                  </div>
 
                  <div className="space-y-4">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest">Categorias de Serviço</label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                       {MAINTENANCE_CATEGORIES.map(cat => (
-                          <button key={cat.id} type="button" onClick={() => toggleCategorySelection(cat.id)} className={`p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all ${newRecord.categories.includes(cat.id) ? 'border-blue-600 bg-blue-50 shadow-md' : 'border-slate-100 bg-white hover:border-slate-200'}`}>
-                             <i className={`fas ${cat.icon} text-lg ${newRecord.categories.includes(cat.id) ? 'text-blue-600' : 'text-slate-300'}`}></i>
-                             <span className={`text-[9px] font-bold uppercase ${newRecord.categories.includes(cat.id) ? 'text-blue-800' : 'text-slate-400'}`}>{cat.label}</span>
-                          </button>
-                       ))}
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Validação de Serviços Executados</p>
+                    <div className="grid grid-cols-1 gap-3">
+                       {resolvingMaintenance.record?.categories?.map(catId => {
+                          const cat = MAINTENANCE_CATEGORIES.find(c => c.id === catId);
+                          const isChecked = checkedItems.includes(catId);
+                          return (
+                             <button key={catId} type="button" onClick={() => toggleChecklistItem(catId)} className={`p-5 rounded-2xl border-2 flex items-center justify-between transition-all ${isChecked ? 'bg-emerald-50 border-emerald-500' : 'bg-white border-slate-100'}`}>
+                                <div className="flex items-center gap-4">
+                                   <i className={`fas ${cat?.icon} ${isChecked ? 'text-emerald-600' : 'text-slate-300'}`}></i>
+                                   <span className={`text-[11px] font-bold uppercase ${isChecked ? 'text-emerald-900' : 'text-slate-400'}`}>{cat?.label}</span>
+                                </div>
+                                <i className={`fas ${isChecked ? 'fa-check-circle text-emerald-500' : 'fa-circle text-slate-100'} text-xl`}></i>
+                             </button>
+                          );
+                       })}
                     </div>
                  </div>
 
-                 {/* DETALHAMENTO DE CUSTOS POR SERVIÇO */}
-                 {newRecord.categories.length > 0 && (
-                   <div className="space-y-4">
-                     <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest">Custos Estimados por Serviço</label>
-                     <div className="space-y-3">
-                       {newRecord.categories.map(catId => {
-                         const cat = MAINTENANCE_CATEGORIES.find(c => c.id === catId);
-                         if (catId === 'tires') return null; // Pneus tem sua própria UI abaixo
-                         return (
-                           <div key={catId} className="flex gap-3 items-center">
-                             <div className="flex-1 text-[10px] font-bold uppercase text-slate-600">{cat?.label}</div>
-                             <input 
-                               type="text" 
-                               placeholder="0.00" 
-                               value={serviceDetails[catId]?.cost || ''}
-                               onChange={(e) => updateServiceDetail(catId, 'cost', e.target.value)}
-                               onFocus={(e) => e.target.select()}
-                               className="w-32 p-4 bg-white border border-slate-200 rounded-xl font-bold text-xs text-right focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                             />
-                           </div>
-                         );
-                       })}
-                     </div>
-                   </div>
-                 )}
-
-                 {/* SEÇÃO DE PNEUS (QUANDO SELECIONADO) */}
-                 {newRecord.categories.includes('tires') && (
-                   <div className="bg-slate-50 p-6 rounded-[2rem] border border-blue-50 space-y-6">
-                      <div className="flex items-center gap-3 border-b border-blue-100 pb-4">
-                         <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center">
-                            <i className="fas fa-car-side"></i>
-                         </div>
-                         <div>
-                            <p className="text-[10px] font-bold text-blue-800 uppercase">Detalhamento de Pneus</p>
-                            <p className="text-[9px] text-blue-400 font-bold uppercase">Selecione as posições e insira os dados técnicos</p>
-                         </div>
-                      </div>
-
-                      <div className="flex flex-col md:flex-row gap-8 items-center">
-                         {/* ESQUEMA GRÁFICO */}
-                         <div className="relative w-32 h-48 bg-slate-200/50 rounded-3xl border border-slate-300 flex flex-col justify-between p-4 shrink-0">
-                            <div className="flex justify-between">
-                               <button onClick={() => toggleWheelPosition('FL')} className={`w-8 h-12 rounded-lg border-2 transition-all ${selectedWheelPositions.includes('FL') ? 'bg-blue-600 border-blue-600 shadow-lg' : 'bg-white border-slate-300'}`}></button>
-                               <button onClick={() => toggleWheelPosition('FR')} className={`w-8 h-12 rounded-lg border-2 transition-all ${selectedWheelPositions.includes('FR') ? 'bg-blue-600 border-blue-600 shadow-lg' : 'bg-white border-slate-300'}`}></button>
-                            </div>
-                            <div className="w-1 h-20 bg-slate-300 mx-auto rounded-full"></div>
-                            <div className="flex justify-between">
-                               <button onClick={() => toggleWheelPosition('RL')} className={`w-8 h-12 rounded-lg border-2 transition-all ${selectedWheelPositions.includes('RL') ? 'bg-blue-600 border-blue-600 shadow-lg' : 'bg-white border-slate-300'}`}></button>
-                               <button onClick={() => toggleWheelPosition('RR')} className={`w-8 h-12 rounded-lg border-2 transition-all ${selectedWheelPositions.includes('RR') ? 'bg-blue-600 border-blue-600 shadow-lg' : 'bg-white border-slate-300'}`}></button>
-                            </div>
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
-                               <i className="fas fa-car text-4xl"></i>
-                            </div>
-                         </div>
-
-                         {/* DADOS TÉCNICOS PNEUS */}
-                         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Marca</label><input placeholder="Ex: Pirelli" value={tireTechnicalInfo.brand} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, brand: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" /></div>
-                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Modelo</label><input placeholder="Ex: Scorpion" value={tireTechnicalInfo.model} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, model: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" /></div>
-                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Custo Unitário (R$)</label><input type="number" step="0.01" value={tireTechnicalInfo.cost} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, cost: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" /></div>
-                            <div><label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Vida Útil Estimada (KM)</label><input type="number" value={tireTechnicalInfo.lifespan} onChange={(e) => setTireTechnicalInfo({...tireTechnicalInfo, lifespan: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" /></div>
-                            <div className="md:col-span-2 p-3 bg-blue-100/50 rounded-xl text-center">
-                               <p className="text-[9px] font-bold text-blue-700 uppercase">Custo Total Pneus: R$ {(selectedWheelPositions.length * (parseFloat(tireTechnicalInfo.cost) || 0)).toFixed(2)}</p>
-                            </div>
-                         </div>
-                      </div>
-                   </div>
-                 )}
-
-                 <div className="flex items-center justify-between p-6 bg-slate-900 rounded-3xl text-white shadow-xl">
-                    <span className="text-xs font-bold uppercase tracking-[0.2em]">Custo Total Previsto da OS</span>
-                    <span className="text-2xl font-black">R$ {totalServicesCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                 <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Valor Final Pago (Opcional se alterado)</label>
+                    <input type="number" step="0.01" value={resolveCost} onChange={(e) => setResolveCost(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" placeholder="R$ 0,00" />
                  </div>
 
-                 <textarea value={newRecord.notes} onChange={(e) => setNewRecord({...newRecord, notes: e.target.value})} placeholder="Informações detalhadas sobre a manutenção, sintomas relatados pelo motorista e solicitações extras..." className="w-full p-6 bg-slate-50 border border-slate-200 rounded-[2rem] font-bold text-sm min-h-[120px] outline-none focus:ring-2 focus:ring-blue-500" />
-
-                 {formError && <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-[10px] font-bold uppercase animate-shake">{formError}</div>}
-
-                 <div className="flex gap-4 pt-4 border-t">
-                    <button onClick={() => setShowMaintenanceForm(false)} className="flex-1 py-4 text-slate-400 uppercase text-[10px] font-bold hover:text-slate-600 transition-colors">Cancelar</button>
-                    <button onClick={handleSubmitMaintenance} disabled={isSubmitting} className="flex-[2] py-5 bg-slate-900 text-white rounded-2xl font-bold uppercase text-xs tracking-widest shadow-2xl hover:bg-slate-800 transition-all active:scale-95">Salvar Ordem</button>
+                 <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Notas de Encerramento</label>
+                    <textarea value={closingNotes} onChange={(e) => setClosingNotes(e.target.value)} className="w-full p-6 bg-slate-50 border border-slate-100 rounded-[2rem] font-bold text-sm min-h-[120px] outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Relate detalhes da manutenção, garantia das peças, etc..." />
                  </div>
+              </div>
+
+              <div className="p-10 border-t bg-slate-50 flex justify-between items-center">
+                 <button onClick={() => setResolvingMaintenance(null)} className="px-8 py-4 text-slate-400 font-bold uppercase text-[10px]">Cancelar</button>
+                 <button onClick={handleResolveMaintenance} disabled={isSubmitting} className="bg-emerald-600 text-white px-12 py-5 rounded-2xl font-bold uppercase text-xs shadow-xl active:scale-95 transition-all">Finalizar OS e Liberar Veículo</button>
               </div>
            </div>
         </div>

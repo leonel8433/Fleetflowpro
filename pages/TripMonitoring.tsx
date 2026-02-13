@@ -82,7 +82,9 @@ const TripMonitoring: React.FC = () => {
 
   const handleOpenExternalMap = (trip: Trip) => {
     const origin = encodeURIComponent(trip.origin || '');
-    const dest = encodeURIComponent(`${trip.destination}${trip.city ? ', ' + trip.city : ''}`);
+    // Inclusão obrigatória de cidade e estado para evitar buscas em cidades erradas
+    const destinationStr = `${trip.destination}, ${trip.city || ''} - ${trip.state || ''}`;
+    const dest = encodeURIComponent(destinationStr);
     const wps = trip.waypoints && trip.waypoints.length > 0 
       ? `&waypoints=${trip.waypoints.map((w: string) => encodeURIComponent(w)).join('|')}` 
       : '';
@@ -227,7 +229,7 @@ const TripMonitoring: React.FC = () => {
                         height="100%"
                         frameBorder="0"
                         style={{ border: 0, filter: 'invert(90%) hue-rotate(180deg) brightness(0.9)' }}
-                        src={`https://www.google.com/maps?saddr=${encodeURIComponent(trip.origin || '')}&daddr=${encodeURIComponent(trip.destination + ', ' + (trip.city || ''))}&output=embed`}
+                        src={`https://www.google.com/maps?saddr=${encodeURIComponent(trip.origin || '')}&daddr=${encodeURIComponent(trip.destination + ', ' + (trip.city || '') + ' - ' + (trip.state || ''))}&output=embed`}
                         allowFullScreen
                       ></iframe>
                     </div>

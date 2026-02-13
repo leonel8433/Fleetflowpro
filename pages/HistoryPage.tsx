@@ -35,7 +35,8 @@ const HistoryPage: React.FC = () => {
 
   const handleOpenMap = (trip: any) => {
     const origin = encodeURIComponent(trip.origin || '');
-    const dest = encodeURIComponent(`${trip.destination}${trip.city ? ', ' + trip.city : ''}`);
+    const destinationStr = `${trip.destination}, ${trip.city || ''} - ${trip.state || ''}`;
+    const dest = encodeURIComponent(destinationStr);
     const wps = trip.waypoints && trip.waypoints.length > 0 
       ? `&waypoints=${trip.waypoints.map((w: string) => encodeURIComponent(w)).join('|')}` 
       : '';
@@ -50,13 +51,13 @@ const HistoryPage: React.FC = () => {
     
     const departureMatch = topPart.match(/OBS_SAIDA: (.*?)(?= \| |$)/);
     const arrivalMatch = topPart.match(/OBS_CHEGADA: (.*?)(?= \| |$)/);
-    const damageMatch = topPart.match(/AVARIA: (.*?)(?= \| |$)/);
+    const damageMatch = topPart.match(/\[AVARIA RELATADA\]: (.*?)(?= \n|$)/);
     
     return {
       departure: departureMatch ? departureMatch[1] : '',
       arrival: arrivalMatch ? arrivalMatch[1] : '',
       damage: damageMatch ? damageMatch[1] : '',
-      journey: logs || topPart.replace(/OBS_SAIDA: .*? \| /g, '').replace(/OBS_CHEGADA: .*?/g, '').replace(/AVARIA: .*? \| /g, '').trim()
+      journey: logs || topPart.replace(/\[AVARIA RELATADA\]: .*?\n/g, '').trim()
     };
   };
 
@@ -108,7 +109,7 @@ const HistoryPage: React.FC = () => {
               const dateObj = new Date(trip.startTime);
               const { departure, arrival, journey, damage } = extractChecklistObs(trip.observations || '');
               
-              // Busca o checklist que contém a foto/detalhes da avaria
+              // Busca o checklist estruturado
               const tripChecklist = checklists.find(c => 
                 c.vehicleId === trip.vehicleId && 
                 Math.abs(new Date(c.timestamp).getTime() - new Date(trip.startTime).getTime()) < 10000
@@ -169,7 +170,8 @@ const HistoryPage: React.FC = () => {
                              <p className="text-[9px] font-write text-slate-400 uppercase tracking-widest">Inspeção Técnica de Saída</p>
                           </div>
                           
-                          {(damage || tripChecklist?.damagePhoto) && (
+                          {/* VISUALIZAÇÃO DA AVARIA E FOTO */}
+                          {(tripChecklist?.damageDescription || tripChecklist?.damagePhoto || damage) && (
                             <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 space-y-3">
                                <p className="text-[9px] font-bold text-amber-700 uppercase">Avaria Registrada pelo Motorista:</p>
                                <div className="flex gap-4 items-start">
@@ -179,7 +181,7 @@ const HistoryPage: React.FC = () => {
                                     </div>
                                   )}
                                   <p className="text-[10px] text-amber-900 italic font-medium leading-relaxed">
-                                    "{damage || 'Avaria identificada sem descrição textual.'}"
+                                    "{tripChecklist?.damageDescription || damage || 'Avaria identificada sem descrição textual.'}"
                                   </p>
                                </div>
                             </div>
