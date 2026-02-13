@@ -59,8 +59,9 @@ const DashboardOverview: React.FC<{ onStartSchedule?: (id: string) => void; onNa
 
   const confirmFinish = async () => {
     if (myActiveTrip) {
-      if (endKm < myActiveTrip.startKm) {
-        alert(`ERRO DE QUILOMETRAGEM: O KM final digitado (${endKm}) não pode ser inferior ao KM registrado na abertura desta viagem (${myActiveTrip.startKm}). Por favor, informe o KM correto do painel.`);
+      // VALIDAÇÃO DE KM: KM FINAL DEVE SER MAIOR QUE O INICIAL
+      if (endKm <= myActiveTrip.startKm) {
+        alert(`⚠️ ERRO DE QUILOMETRAGEM: O KM final digitado (${endKm}) deve ser SUPERIOR ao KM registrado na abertura desta viagem (${myActiveTrip.startKm}). Verifique o odômetro no painel e corrija o valor.`);
         return;
       }
       

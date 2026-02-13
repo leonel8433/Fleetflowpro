@@ -121,6 +121,14 @@ const TripMonitoring: React.FC = () => {
 
   const confirmFinish = () => {
     if (finishingTripId) {
+      const trip = activeTrips.find(t => t.id === finishingTripId);
+      
+      // VALIDAÇÃO DE KM: KM FINAL DEVE SER MAIOR QUE O INICIAL
+      if (trip && endKm <= trip.startKm) {
+        alert(`⚠️ ERRO DE QUILOMETRAGEM: O KM final (${endKm}) deve ser SUPERIOR ao KM de abertura (${trip.startKm}).`);
+        return;
+      }
+
       endTrip(finishingTripId, endKm, new Date().toISOString(), 100, {
         fuel: fuelExpense,
         other: otherExpense,
