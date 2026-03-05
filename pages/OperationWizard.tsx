@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useFleet } from '../context/FleetContext';
 import { Vehicle, Checklist, Trip, VehicleStatus, TripType } from '../types';
 import { checkSPRodizio, getRodizioDayLabel, isLocationSaoPaulo } from '../utils/trafficRules';
+import SearchableSelect from '../components/SearchableSelect';
 
 const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => void }> = ({ scheduledTripId, onComplete }) => {
   const { vehicles, currentUser, startTrip, fines, scheduledTrips, activeTrips, deleteScheduledTrip } = useFleet();
@@ -365,10 +366,14 @@ const OperationWizard: React.FC<{ scheduledTripId?: string; onComplete?: () => v
               </div>
               <div>
                 <label className="block text-[10px] text-slate-400 uppercase mb-2">Cidade</label>
-                <select value={route.city} onChange={(e) => setRoute({ ...route, city: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" disabled={!route.state || isLoadingLocs}>
-                  <option value="">{isLoadingLocs ? 'Carregando...' : 'Selecione...'}</option>
-                  {cities.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <SearchableSelect
+                  options={cities}
+                  value={route.city}
+                  onChange={(val) => setRoute({ ...route, city: val })}
+                  disabled={!route.state || isLoadingLocs}
+                  isLoading={isLoadingLocs}
+                  placeholder="Selecione a cidade..."
+                />
               </div>
             </div>
 

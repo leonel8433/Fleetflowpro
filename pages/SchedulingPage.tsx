@@ -3,6 +3,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useFleet } from '../context/FleetContext';
 import { ScheduledTrip, VehicleStatus, Vehicle, TripType } from '../types';
 import { checkSPRodizio, getRodizioDayLabel, isLocationSaoPaulo } from '../utils/trafficRules';
+import SearchableSelect from '../components/SearchableSelect';
 
 const SchedulingPage: React.FC = () => {
   const { drivers, vehicles, scheduledTrips, activeTrips, currentUser, addScheduledTrip, updateScheduledTrip, deleteScheduledTrip } = useFleet();
@@ -317,10 +318,14 @@ const SchedulingPage: React.FC = () => {
               </div>
               <div className="md:col-span-1">
                 <label className="block text-[10px] text-slate-400 uppercase mb-2">Cidade</label>
-                <select required value={newSchedule.city} onChange={(e) => setNewSchedule({ ...newSchedule, city: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" disabled={!newSchedule.state || isLoadingLocs}>
-                  <option value="">{isLoadingLocs ? '...' : 'Selecione...'}</option>
-                  {cities.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <SearchableSelect
+                  options={cities}
+                  value={newSchedule.city}
+                  onChange={(val) => setNewSchedule({ ...newSchedule, city: val })}
+                  disabled={!newSchedule.state || isLoadingLocs}
+                  isLoading={isLoadingLocs}
+                  placeholder="Selecione a cidade..."
+                />
               </div>
             </div>
 
